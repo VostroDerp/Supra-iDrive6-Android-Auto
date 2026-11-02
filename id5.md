@@ -494,3 +494,12 @@ UI included. Unknown yet: activation path (DSI service? NmeCmdLine command?
 FSC flag?), whether it's license/FSC-gated, and whether it projects over the
 car's own BT+WiFi or the AOAP USB path (its presence would explain why the
 A4A handler exists and owns /dev/oap* first).
+
+EAF configs pulled (eaf_default/mini.cfg): [eaf] section registers
+protocol=com.bmw.a4a .. com.bmw.a4a15 — BMW's Android-Auto external-accessory
+protocol handlers declared in the media app's config (file header notes it's
+the iPhone-app-communication mechanism). io-media-cinemo.cfg, Media.cfg,
+cinemo_options.xml, aoap.cfg all pulled to pulled/. Activation path still
+open: likely NbtMediaMainApp A4A -> Cinemo projection, gated by coding/FSC —
+check vehicle coding (A4A option) and whether NbtMediaMainApp registers a DSI
+service for AA when coded.
