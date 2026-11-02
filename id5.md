@@ -592,3 +592,21 @@ identity variants (url=market://details?id=com.google.android.projection.gearhea
 i.e. point AT the AA app itself!) — accessory url that resolves to gearhead
 should make Android hand the accessory to AA directly. OR accept the BT
 handshake and see if toUsb release pushes it to the accessory.
+
+BYTEFLOW BREAKTHROUGH (nbt-usb11.log, phone AA data wiped + all bait killed +
+Android/AndroidAuto identity): session carried real AAP — 3602B in / 2801B
+out, ch 3/10/11/13 frames, 'Streaming Media Frame 1 on Channel 11'. Phone-side
+logcat: USB_ACCESSORY_ATTACHED -> CarSetupService -> handoff complete
+(success). Session dies at ~3s on: 'Failed to decrypt encrypted frame (35
+bytes): SSL3_GET_RECORD: decryption failed or bad record mac'.
+
+WINNING CONFIG: NBT_USB=1 NBT_SPP_REREG_S=0 + kill-bait daemon (deregisters
+stock AndroidAuto SPP) + NBT_USB_MANUFACTURER=Android NBT_USB_MODEL="Android
+Auto" NBT_USB_URL=https://github.com/Sq00ky/Supra-iDrive6-Android-Auto.
+Identity matters: 'BMW Group'/'BMW' => phone logs 'Accessory is not valid'
+(CAR.SETUP.LITE) and rejects; generic Android identity accepted.
+
+REMAINING BUG: every encrypted RX frame fails SSL_read bad record mac =>
+cipher/handshake mismatch (probably aasdk SSL channel init or USB framing
+feeds SSL wrongly — wireless TLS-over-TCP vs USB framing differ). Debuggable
+offline in aa_session.cpp / aa_cryptor.cpp.
