@@ -1,0 +1,17 @@
+# knockd.conf — deploy to /var/opt/aa/knock.conf
+# KEY=VALUE lines; '#' comments. Missing file = daemon refuses to run (fail-safe).
+
+PORT=46610
+
+# PEM public key verifying knock signatures (REQUIRED).
+PUBKEY=/var/opt/aa/knock.pub
+
+# Command run on a valid knock — the SSH bring-up (REQUIRED; fill after recon
+# finds the stock dropbear path/args). Examples (verify paths on the HU!):
+#   SSHCMD=/fs/sda0/usr/sbin/dropbear -R -s
+#   SSHCMD=/usr/sbin/dropbear -R -s -p 22222
+# If stock dropbear needs the FDAC flag instead of a binary spawn, put the
+# equivalent local action here once identified (e.g. touch a flag + start).
+SSHCMD=/usr/sbin/dropbear -R -s
+
+LOG=/var/opt/aa/knock.log
