@@ -623,3 +623,26 @@ NEXT DEBUG (offline): dump full handshake hex (2376B in / 1245B out) from
 nbt-usb11.log, diff vs openauto/aasdk's TLS path; check aa_cryptor.cpp TLS
 version pinning + whether records on ch>0 share one SSL or need per-channel
 contexts. aa-session decrypt at aa_session.cpp ~line 901.
+
+CBC-CIPHER TEST (nbt-usb12.log): pinning cipher list to AES128-SHA etc
+(NBT_SSL_CIPHERS env added to aa_cryptor.cpp) did NOT fix bad-mac — phone
+still logs SSLV3_ALERT_BAD_RECORD_MAC at 23:40:42. NOT a GCM impl bug.
+
+SHARP PATTERN from frame trace: ch0 (control) encrypted frames with flags
+0x0B decrypt FINE (937B + 57B records OK). ALL failures are data-channel
+frames with flags 0x0F (bit 0x04 extra). Phone negotiated AAP v1.7 (we
+requested 1.6) — bit 0x04 may mark newer first-frame length semantics or a
+newer frame type our parser mishandles, OR data-channel TLS records arrive
+MISORDERED in the shared SSL stream (USB transport interleaving — TLS record
+seq is implicit, reorder = permanent MAC failure; symmetric error on the
+phone side = our writes also misordered/misframed: phone log says 'Did not
+decrypt all the bytes in the input buffer!' = partial/extra record bytes).
+
+ALSO: multiple /dev/oapN sessions churn (oap01/010/012/014/015) — verify only
+the LIVE node's session runs; stale-node sessions could feed records to the
+wrong SSL object.
+
+NEXT (offline): read aasdk FrameHeader flag semantics for bit 0x04 (v1.7+);
+check whether encrypt output packs >1 record per frame; verify USB reader
+delivers frames strictly in wire order (no per-channel reorder); pin
+VersionRequest to an older minor (env?) to test if 0x0F frames disappear.
