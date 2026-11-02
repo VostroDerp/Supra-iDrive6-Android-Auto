@@ -503,3 +503,11 @@ cinemo_options.xml, aoap.cfg all pulled to pulled/. Activation path still
 open: likely NbtMediaMainApp A4A -> Cinemo projection, gated by coding/FSC —
 check vehicle coding (A4A option) and whether NbtMediaMainApp registers a DSI
 service for AA when coded.
+
+Addendum: setting phone USB preference to "connected device" (host-controlled)
+made the phone ACTIVELY attempt AA over USB for the first time (notification
+"connected to android auto" ~seconds, HU overlay VISIBLE ~15s, menu entry
+"connected") — previously AA only engaged on BT connect. Session still ends:
+VersionRequest out, 0 bytes in, 2s dead. So phone-side AA service DOES run on
+USB once USB-mode is host-controlled — the failure is inside the transport
+negotiation (phone never writes), not accessory claiming. Logcat will say why.
