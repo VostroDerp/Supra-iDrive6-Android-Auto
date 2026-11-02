@@ -431,3 +431,44 @@ Send-fd = mwud_pub's ephemeral UDP socket (pidin -p PID fds) — reply then
 goes to a dead port; fd4 (the *.9196 listener) also works but loops the reply.
 
 Orchestrator: tools/ssh-vetting/wake-uap.sh — whole bring-up in one shot.
+
+## 13. USB AA attempt #1 (2026-11-02, nbt-aad-usb / PR#42) — phone never streams
+
+Setup that WORKS: `vdev-medialaunch` auto-detects OAP-capable phones on plug-in,
+spawns `aoap-switch -vvv -b <bus> -d <dev> -c /opt/mm/etc/aoap.cfg -t` which only
+mounts `/dev/android<bus><dev>` and waits (start_in_oap_mode: 0). The switch is
+then driven by a devctl: `__DIOTF(5,3)` Config-and-Switch carrying a 1540-byte
+Identity {protocol, manufacturer, model, description, version, url, serial}.
+Stock issuer: NbtMediaMainApp's A4A handler (config seen: 'BMW Group'/'BMW',
+url market://details?id=com.bmwgroup.connected.bmw, serial 'VIN', mode 2 +
+SET_AUDIO_MODE). nbt-aad-usb also self-issues the devctl when it sees android*
+nodes (default 'Android'/'Android Auto', protocol 1).
+
+Observed flow: switch issued -> phone re-enumerates 18d1:0x2d00 -> vdev spawns
+`devc-serusb-aoap -vvvvv -b B -d D -l 16384` -> /dev/oap<bus><dev> resmgr
+(read=bulk-in, write=bulk-out; one read() = one whole transfer, >= -l buffer).
+
+FAILURE MODE: every session = daemon sends VersionRequest (ch0, 12B) -> phone
+sends ZERO bytes -> 2s timeout. Once (first-ever session, stock BMW-identity
+switch + media app's OAPReader holding /dev/oap01) the phone sent a 22136-byte
+ch18 frame in 4-byte dribbles, then stopped. URB writes to the phone also
+time out (OAP-DRV io_oapwrite "Connection timed out" ustatus 6000000) — the
+phone's bulk-out endpoint is never drained => the phone-side AA service never
+claims the accessory, matching the phone's permanent "connecting" spinner.
+
+Tried, all identical 0-byte result: NBT_USB_DIRECT 1 and 0 (stock driver path),
+identities 'Android'/'Android Auto' and 'BMW Group'/'BMW' (patched build
+protocol=2 + SET_AUDIO_MODE, staged as /var/opt/aa/nbt-aad-usb2), My BMW app
+disabled (accessory-url app-association theory), BT delete+re-pair to HU,
+phone reboot. BT re-pair DID make the phone finally attempt AA ("connected"
+notification flash) — suggests phone-side AA is BT-gated, not accessory-gated.
+
+PR #42 upstream notes (author): experimental, "connecting your phone is a bit
+buggy, doesn't handle reconnecting"; only ever tested NBT_USB_DIRECT=1.
+
+NEXT LEVER: phone-side logcat (CAR.SERVICE tag — the daemon names it itself)
+to see why AA service won't claim/stream on the accessory. Needs ADB — grab
+over WiFi-ADB at home (car USB is in accessory mode, adb iface absent).
+Suspects: accessory-app association never fires with either identity; AA
+service wants the SPP setup FIRST then told to use USB (ordering); the
+'BMW Group' url pointing at a disabled app leaves the accessory unclaimed.
