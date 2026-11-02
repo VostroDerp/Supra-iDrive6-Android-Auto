@@ -566,3 +566,14 @@ Deploy: plink -i ~/.ssh/nbt_knock.ppk -P 3804 root@169.254.199.119
 NOTE: killing the stock SPP record also removes the wireless-AA bait for the
 BM3 path while usb3 runs — restart/reboot restores it (re-registration on
 next boot). Reversible by design.
+
+KILL-BAIT DEPLOYED (usb3 + NBT_SPP_REREG_S=0): daemon deregisters stock
+'AndroidAuto' SPP at startup (GapErrorCode=0 first run; =10 already-gone
+after). STILL "BMW nnnnn wireless android auto available" on the phone even
+with a brand-new BT pairing + force-close => the wireless-AA advertisement
+is NOT (only) the 'AndroidAuto' SPP record — either another SDP service
+advertises it, BLE adv, or the phone caches per-BT-MAC capability
+(GH.CarSvcDataStorage). NEXT: enumerate the car's SDP table (sdptool browse
+<car-bt-mac> — needs sdptool/bluez on laptop, or bluetoothctl
+discover+info), or wipe AA app data on the phone to clear the cached
+association. usb3 daemon currently running on HU with bait-kill + REREG=0.
