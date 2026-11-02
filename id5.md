@@ -646,3 +646,31 @@ NEXT (offline): read aasdk FrameHeader flag semantics for bit 0x04 (v1.7+);
 check whether encrypt output packs >1 record per frame; verify USB reader
 delivers frames strictly in wire order (no per-channel reorder); pin
 VersionRequest to an older minor (env?) to test if 0x0F frames disappear.
+
+ROOT CAUSE FOUND (offline analysis of nbt-usb12.log): NOT SSL/framing — the
+stock media app's OAPReaderThread (NbtMediaMainApp) opens the same /dev/oap*
+node and STEALS queued bulk-in transfers. usb_accessory.cpp comment confirms:
+'car log 2026-10-31: 12 TLS records in a row missing in a burst of channel
+opens'. TLS record seq is implicit -> one stolen record = bad-record-mac on
+every subsequent record, and our outbound records get eaten too (phone logs
+'Did not decrypt all the bytes in the input buffer!'). ch0 records decrypted
+because they arrived before the burst; ch1/ch2 opens also passed, ch12+ died
+in the burst. Sequence-jump diagnostics (9736...->10891...) were a red
+herring — checkRxRecord reads GCM explicit-nonce bytes; with CBC ciphers the
+field is ciphertext IV, not seq.
+
+FIX = NBT_USB_DIRECT=1 (already in the build): daemon claims AOAP driver via
+UsbDirect.claimAoapDriver(), stock devc-serusb-aoap stopped (stopAoapDriver),
+no /dev/oap node exists for the media app to steal from, io-usb delivers
+transfers strictly in order.
+
+NEXT CAR TEST (one command, usb3 already on HU):
+  slay nbt-aad + serusb-aoap, then:
+  NBT_USB=1 NBT_USB_DIRECT=1 NBT_USB_CLAIM_DRIVER=0 NBT_SPP_REREG_S=0 \
+  NBT_USB_MANUFACTURER="Android" NBT_USB_MODEL="Android Auto" \
+  NBT_USB_URL="https://github.com/Sq00ky/Supra-iDrive6-Android-Auto" \
+  NBT_LOG_FILE=/var/opt/aa/nbt-usb13.log NBT_VERBOSE=1 \
+  AOI_CONFIG=/var/opt/aa/aoi/ MM_RENDERER_CONFIG=/var/opt/aa/mm-renderer.conf \
+  LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:/fs/sda0/opt/conn/lib/carplay:/opt/sys/lib \
+  /var/opt/aa/nbt-aad-usb3 &
+  -> replug phone; expect records past ~#6 to keep decrypting + video frames.
