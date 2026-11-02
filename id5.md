@@ -577,3 +577,18 @@ advertises it, BLE adv, or the phone caches per-BT-MAC capability
 <car-bt-mac> — needs sdptool/bluez on laptop, or bluetoothctl
 discover+info), or wipe AA app data on the phone to clear the cached
 association. usb3 daemon currently running on HU with bait-kill + REREG=0.
+
+POST-WIPE TEST: with AA app data wiped + no wireless bait anywhere (stock SPP
+deregistered, ours not registered, REREG=0), sessions still die at 2s with
+0 bytes — the phone now never engages AA on the accessory either (no
+"connecting" spinner, no AA entry in settings = phone sees no head unit
+association at all). Working theory now: a wiped-AA phone needs the
+accessory's own app-association to launch AA (FirstActivity via
+USB_ACCESSORY_ATTACHED only fired when identity had a matching intent/url?).
+Suspect: the generic 'Android'/'Android Auto' identity + github URL has no
+installed handler; the phone needs EITHER a head-unit app association or a
+fresh pairing flow that our accessory identity doesn't trigger. Next: try
+identity variants (url=market://details?id=com.google.android.projection.gearhead
+i.e. point AT the AA app itself!) — accessory url that resolves to gearhead
+should make Android hand the accessory to AA directly. OR accept the BT
+handshake and see if toUsb release pushes it to the accessory.
