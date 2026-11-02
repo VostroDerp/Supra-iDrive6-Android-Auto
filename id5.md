@@ -610,3 +610,16 @@ REMAINING BUG: every encrypted RX frame fails SSL_read bad record mac =>
 cipher/handshake mismatch (probably aasdk SSL channel init or USB framing
 feeds SSL wrongly — wireless TLS-over-TCP vs USB framing differ). Debuggable
 offline in aa_session.cpp / aa_cryptor.cpp.
+
+SSL ANALYSIS: handshake completes (VersionResponse 1.7 -> ClientHello 2376B ->
+our 1245B -> phone 51B -> 'TLS Handshake Complete!'). First RX record =
+VALID TLS1.2 record (17 03 03 00 1E + 8B explicit nonce = AES-GCM) but
+bad-record-mac on EVERY frame => traffic keys differ from phone's even though
+handshake reported complete. Suspects: (a) handshake bytes corrupted by USB
+transport fragmenting (earlier 4B-dribble bug) -> wrong master secret yet
+Finished still verified? unlikely but check; (b) daemon forces TLS1.2 client
+mode while phone negotiated something else; (c) cryptor re-init mid-session.
+NEXT DEBUG (offline): dump full handshake hex (2376B in / 1245B out) from
+nbt-usb11.log, diff vs openauto/aasdk's TLS path; check aa_cryptor.cpp TLS
+version pinning + whether records on ch>0 share one SSL or need per-channel
+contexts. aa-session decrypt at aa_session.cpp ~line 901.
