@@ -18,15 +18,22 @@ nbt-aad autostart. Replicate FDAC's effect in the boot hook → SSH every boot,
 server never needed again.
 
 PRIORITY ORDER (user-decided, latest):
-  1a. KNOCK DAEMON — small boot-time listener on our own port: issues a
+  1a. KNOCK DAEMON — DONE 2026-11-02 (deployed + proven 2x cold boots, zero
+      bavarian). knockd on dwc0:851 (stock filter_OBD pass, ENET-only) ->
+      RSA-2048 sig -> sshd :3804 key-only via /var/opt/aa/authorized_keys.
+      Boot hook in start-aa.sh (5x retry). Client: knock/knock.py; keys at
+      ~/.ssh/nbt_knock.{pem,ppk}. Original description below, kept for ref:
+      small boot-time listener on our own port: issues a
       challenge, laptop signs it (ed25519, private key in PM), daemon
       verifies against baked-in PUBLIC key -> spawns dropbear for the
       session. SSH stays off until we knock. Stock trust chain 100%
       untouched -> bavarian + BMW paths all remain as fallback. Focus:
       fast startup, lightweight, robust, secure (constant-time verify,
       fresh nonce, no replayable state).
-  1b. ADD our CA ALONGSIDE stock (if NbtDiagHuHighApp shows a multi-root
-      cert store) -> real FD2F self-signing while bavarian stays intact.
+  1b. ADD our CA ALONGSIDE stock — NOT DONE (NbtEvoOmapDiagHUHighApp pulled
+      to pulled/, not yet analyzed; 1a already covers daily need so this is
+      optional/future-cars). (if cert store shows multi-root) -> real FD2F
+      self-signing while bavarian stays intact.
       REPLACE-only if no alternative AND a proven one-command restore
       (backup modulus + dd-back script tested BEFORE overwriting).
   1c. USB-STICK ARM — kept as fallback design if 1a/1b stall.
@@ -49,7 +56,7 @@ hu.sh pull /opt/sys/bin/NbtDiagHuHighApp pulls/   # FD2F verifier -> offline:
 - [ ] TEST: knock -> SSH opens; reboot without knock -> no SSH (stock);
       bavarian unlock still works alongside
 - [ ] verifier binary pulled; cert store = multi-root? -> 1b feasibility
-- [ ] if 1a lands: knock client tool for laptop (sign challenge via PM key)
+- [x] if 1a lands: knock client tool for laptop (sign challenge via PM key)
 
 1c design detail — USB-STICK ARM (fallback, unchanged):
 USB stick carries ONLY an authorized_keys public-key file (safe to lose);
@@ -84,16 +91,15 @@ hu.sh sh 'pidin arg | grep -i "hsfz\|diag\|6801"'
       dropbear/sshd build — toolchain available
 - [ ] risk window recorded: until this lands, a dead server = locked out
 
-## 2. [ ] USB AA (PR #42 — binary built, ready)
+## 2. [~] USB AA (PR #42) — attempted 2026-11-02; BLOCKED phone-side (see id5.md §13)
 
-Pre-recon (2 min, phone unplugged then plugged):
-```
-hu.sh sh 'ls /dev/android* /dev/oap* 2>/dev/null; pidin fds | grep -i oap; pidin ar | grep -i aoap'
-hu.sh sh 'sloginfo | grep -i "aoap\|oap\|android" | tail -20'
-```
-- [ ] `/dev/android*` appears when phone plugs in
-- [ ] `/dev/oap*` appears (stock driver switching works on ID5)
-- [ ] Note whether NBTMediaMainApp holds the oap node
+Pre-recon — DONE:
+- [x] `/dev/android*` appears when phone plugs in (vdev-medialaunch auto-fires aoap-switch -t)
+- [x] `/dev/oap*` appears (stock devc-serusb-aoap binds the accessory)
+- [x] NbtMediaMainApp A4A handler holds /dev/oap* concurrently — real contention
+      (documented race in usb_accessory.cpp comments; observed stealing reads)
+- [x] switch flow fully mapped: aoap-switch -t mounts /dev/androidNN only;
+      devctl __DIOTF(5,3) Config-and-Switch + 1540B Identity drives the flip
 
 Deploy + test:
 ```
@@ -109,17 +115,24 @@ hu.sh sh 'cd /var/opt/aa && unset LD_PRELOAD; NBT_USB=1 NBT_USB_DIRECT=1 \
   LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:/fs/sda0/opt/conn/lib/carplay:/opt/sys/lib:/var/opt/aa \
   ./nbt-aad-usb > nbt-usb-stdout.log 2>&1 &'
 ```
-- [ ] `ls /dev/android*` node appears after plug with daemon running
-- [ ] log shows `switch to accessory mode sent` / `claimed devc-serusb-aoap`
-- [ ] `/dev/oap*` node, daemon reads it (`pidin fds | grep oap` → nbt-aad only)
-- [ ] AA session projects over USB; phone charges
-- [ ] unplug/replug behavior noted (known-buggy per PR TODO)
-- [ ] audio works (untested upstream — check iDrive master volume first)
-Expected rough edges: reconnect handling, possible NBTMediaMainApp contention.
-If NBT_USB_DIRECT claims devc-serusb-aoap and breaks stock media: daemon exit
-releases the claim (path-space claim dies with the process).
+- [x] `ls /dev/android*` node appears after plug with daemon running
+- [x] log shows `switch to accessory mode sent` / `claimed devc-serusb-aoap`
+      (daemon self-issues the devctl; phone re-enumerates 0x2d00)
+- [x] `/dev/oap*` node + daemon opens it (oap01/03/04 all sessioned)
+- [ ] AA session projects over USB; phone charges — BLOCKED: VersionRequest
+      sent, phone answers 0 bytes every session, 2s timeout, phone stuck
+      "connecting" (writes to phone URB-timeout too => phone never claims
+      the accessory channel). Tried: DIRECT on/off, 'Android/AA' vs
+      'BMW Group'/'BMW' identities, protocol 2+SET_AUDIO_MODE (patched build
+      = /var/opt/aa/nbt-aad-usb2), My BMW disabled, BT re-pair, phone reboot.
+- [x] unplug/replug behavior noted (re-enum gives new dev number; vdev refires
+      aoap-switch -t but nothing issues the devctl unless our daemon is up)
+- [ ] audio works — never reached
+NEXT LEVER: phone-side logcat (tag CAR.SERVICE) via WiFi-ADB at home —
+car USB can't host adb in accessory mode. PR notes: experimental, buggy
+reconnect, only ever tested NBT_USB_DIRECT=1.
 
-## 3. [ ] Official AA leftovers recon (Cinemo/NmeSDK) — cheap, same session
+## 3. [~] Official AA leftovers recon (Cinemo/NmeSDK) — done 2026-11-02, see id5.md §14
 
 ```
 hu.sh sh 'ls -l /fs/sda0/opt/mm/lib/ | grep -i "nme\|cinemo\|auto"'
