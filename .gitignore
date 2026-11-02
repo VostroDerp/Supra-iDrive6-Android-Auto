@@ -15,3 +15,4 @@ tools/test_controls
 FUTURE.md
 tools/ssh-vetting/aa-install/knockd
 tools/ssh-vetting/knock/knockd
+tools/ssh-vetting/recon/
