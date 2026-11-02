@@ -511,3 +511,31 @@ made the phone ACTIVELY attempt AA over USB for the first time (notification
 VersionRequest out, 0 bytes in, 2s dead. So phone-side AA service DOES run on
 USB once USB-mode is host-controlled — the failure is inside the transport
 negotiation (phone never writes), not accessory claiming. Logcat will say why.
+
+LOGCAT BREAKTHROUGH (phone-side, 2026-11-02 late): the phone is NOT waiting on
+the USB accessory at all — it runs the WIRELESS-AA setup over the car BT:
+GH.WPP.RFCOMM connects to car BT <car-bt-mac> on our 'AndroidAuto' SPP
+uuid (4de17a00-52cb-11e6-bdf4-0800200c9a66), then waits 12 s for the head
+unit's first WPP message -> WIRELESS_SETUP_WPP_VERSION_REQUEST_TIMEOUT,
+restart loop (attempt #128+). So: phone insists on the BT SPP WPP handshake
+first; that handshake is what tells it which transport to use.
+
+Root cause in daemon (main.cpp ~line 899): when NBT_USB=1 AND usb->phonePresent(),
+the wireless loop does `usleep(500000); continue;` — parks the whole BT/SPP
+accept path ("Bluetooth links are left alone"). The designed toUsb path
+("releasing the Bluetooth link, Android Auto goes over USB" ~line 1048) lives
+INSIDE the per-link handler that never gets invoked while parked => the phone's
+RFCOMM connects (kernel accepts) but nobody answers the WPP handshake =>
+0-byte sessions on the accessory channel + infinite phone-side WPP timeouts.
+
+Also explains the 4-byte dribble on the one early session: phone probably
+wrote its WPP first message bytes.
+
+FIX CANDIDATES (not yet applied):
+a) In USB mode, still ACCEPT the SPP link and let the toUsb release path run
+   (close the link -> phone gives up wireless -> commits to accessory).
+   Minimal: replace the `if (usbPhone) continue` park with accept+release.
+b) In USB mode, don't register the 'AndroidAuto' SPP service at all (kill the
+   RFCOMM bait) -> phone can't attempt wireless setup, must use accessory.
+   Which the phone prefers is an empirical question; (a) is closer to
+   upstream's own intent.
