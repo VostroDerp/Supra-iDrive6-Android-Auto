@@ -472,3 +472,25 @@ over WiFi-ADB at home (car USB is in accessory mode, adb iface absent).
 Suspects: accessory-app association never fires with either identity; AA
 service wants the SPP setup FIRST then told to use USB (ordering); the
 'BMW Group' url pointing at a disabled app leaves the accessory unclaimed.
+
+## 14. Cinemo/NME official-AA recon (2026-11-02, pulled binaries)
+
+libNmeSDK.so (630KB, /opt/mm/lib) exports a COMPLETE ICinemoAndroidAuto*
+interface family — 11 interface groups / 12 iids:
+  AudioSource, Bluetooth (OnReadyForPairing, RequestDelayedPairing,
+  SendAuthData), Input (ReportKey/Absolute/Relative/Touch/TouchPad/
+  SendKeyEvent/SendTouchscreenEvent), MediaBrowser, MediaPlayback,
+  Navigation, Notification, Phone, Radio, Sensor, VendorExtension.
+Cinemo (14.7MB, /opt/mm/bin) embeds ICinemoShellAndroidAuto + a full AA UI:
+  res://androidauto.png, Xui/player/player_androidauto.xml,
+  Xui/player/menu/androidauto.png + androidauto_disabled.png.
+NmeCmdLine (113KB) exists as the SDK CLI — next: dump its command help to see
+whether an AndroidAuto session can be started/inspected directly.
+io-media-cinemo + io-media-generic run stock; Cinemo binary itself was NOT in
+pidin — likely started on demand (or dormant entirely).
+
+Meaning: the ID5 unit carries a complete, dormant official AA engine —
+UI included. Unknown yet: activation path (DSI service? NmeCmdLine command?
+FSC flag?), whether it's license/FSC-gated, and whether it projects over the
+car's own BT+WiFi or the AOAP USB path (its presence would explain why the
+A4A handler exists and owns /dev/oap* first).
