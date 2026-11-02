@@ -539,3 +539,30 @@ b) In USB mode, don't register the 'AndroidAuto' SPP service at all (kill the
    RFCOMM bait) -> phone can't attempt wireless setup, must use accessory.
    Which the phone prefers is an empirical question; (a) is closer to
    upstream's own intent.
+
+DEEPER CAUSE: the CAR'S OWN stock BT advertises wireless-AA — phone's AA
+settings list "BMW nnnnn wireless android auto available" even with our SPP
+service unregistered. The stock 'AndroidAuto' SPP SDP record exists from boot
+(our daemon's first register hit GapErrorCode=5 already-registered, then
+stole it via Deregister+Register). Phone ALWAYS prefers wireless-AA while
+that bait exists => never claims the USB accessory channel.
+
+IN PROGRESS (patch step 2): kill-bait build — make USB-mode daemon deregister
+the stock 'AndroidAuto' SPP service at startup so the phone has no wireless
+path and must commit to the accessory. Patch plan (usb-pr42 worktree):
+- bluetooth_manager.cpp: add `volatile bool g_sppKillOnly = false;`
+- onGapAttached (~line 177): if killOnly -> setState(SPP_DEREG_SENT) +
+  sendDeregister(c, "usb kill bait") instead of SPP_REG_SENT + sendRegister
+- DEREG response handler (~line 256): if killOnly -> setState(SPP_DONE)
+  (never sendRegister)
+- new method killAndroidAutoSdp() (class in include/bluetooth_manager.hpp:28,
+  mirror registerAndroidAutoSdp but set g_sppKillOnly before g_gap.open)
+- main.cpp USB branch (~line 1653): call bluetooth.killAndroidAutoSdp()
+Build: docker run --rm --platform linux/386 -v $PWD/milestone-7:/src -w /src
+  andreluizpd/qnx-qcc-docker:6.5.0 make nbt-aad
+Deploy: plink -i ~/.ssh/nbt_knock.ppk -P 3804 root@169.254.199.119
+  'cat > /var/opt/aa/nbt-aad-usb3' < milestone-7/nbt-aad; chmod +x; launch
+  with NBT_USB=1 env block; user replugs phone; watch nbt-usb*.log for bytes.
+NOTE: killing the stock SPP record also removes the wireless-AA bait for the
+BM3 path while usb3 runs — restart/reboot restores it (re-registration on
+next boot). Reversible by design.
