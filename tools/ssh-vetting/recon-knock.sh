@@ -6,7 +6,7 @@
 # details, alternate access (qconn), USB mount naming, verifier binary.
 cd "$(dirname "$0")" || exit 1
 
-r() { echo "=== $*"; hu.sh sh "$*" 2>&1; echo; }
+r() { echo "=== $*"; ./hu.sh sh "$*" 2>&1; echo; }
 
 echo "##### knockd recon $(date) #####"; echo
 r 'ifconfig -a | grep -A3 "dwc0\|uap0"'
@@ -27,6 +27,6 @@ r 'ls /var/opt/sys* /fs/sda0/opt/sys/*syset* 2>/dev/null'
 r 'ls -l /var/opt/aa/ 2>/dev/null'          # current deploy state
 
 echo "##### pulling verifier binary #####"
-hu.sh pull /opt/sys/bin/NbtDiagHuHighApp pulled/NbtDiagHuHighApp 2>&1 || \
-hu.sh pull /fs/sda0/opt/sys/bin/NbtDiagHuHighApp pulled/NbtDiagHuHighApp 2>&1 || \
+./hu.sh pull /opt/sys/bin/NbtDiagHuHighApp pulled/NbtDiagHuHighApp 2>&1 || \
+./hu.sh pull /fs/sda0/opt/sys/bin/NbtDiagHuHighApp pulled/NbtDiagHuHighApp 2>&1 || \
 echo "NbtDiagHuHighApp not at expected path — find it via pidin line above"

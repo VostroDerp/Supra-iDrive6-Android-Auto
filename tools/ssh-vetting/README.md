@@ -121,3 +121,28 @@ bavarian-ssh-client --server ws://127.0.0.1:8443 --insecure
 fake relay that plays the recorded server script — or no relay at all to isolate the
 client's own behaviour). `dyn-mitm.sh` is the Docker/Xvfb orchestrator used during
 vetting; adjust paths if reused outside the `bavarian-sandbox` image.
+
+## knockd — self-owned SSH gate (DEPLOYED + PROVEN 2026-11-02)
+
+Alternative to the online unlock: a tiny ARM daemon (`knock/knockd.c`, ~240 lines,
+statically linked) listens on dwc0:851. Laptop client `knock/knock.py` answers a
+fresh 32-byte nonce with an RSA-2048 PKCS#1v1.5/SHA256 signature; valid sig runs
+SSHCMD. Fully additive — the stock FDAC unlock is untouched and remains the fallback.
+
+Live layout on HU (/var/opt/aa/): knockd, knock.conf, knock.pub (hex modulus),
+sshd_config (Port 3804, key-only, AuthorizedKeysFile=/var/opt/aa/authorized_keys),
+authorized_keys. Boot launch via start-aa.sh guarded hook (+x arms, bounded 5x retry).
+
+Why ports 851/3804: stock `pf` anchor `filter_OBD` already passes them on dwc0 —
+ZERO firewall changes. Neither port is in uap0's pass list => ENET-only, no Wi-Fi
+exposure. sshd spawns per-knock, dies with reboot => SSH is never permanently on.
+
+Proven: cold boot -> knockd auto-armed via start-aa.sh -> knock.py -> 'K' ->
+sshd:3804 -> key-only root login on hu-omap. Garbage/wrong-key sigs rejected + logged.
+Gotcha found+fixed: bare TCP probes (nc -z) killed the daemon via SIGPIPE on send
+-> signal(SIGPIPE, SIG_IGN). (rc=-1 in knock.log after SSHCMD is cosmetic:
+SA_NOCLDWAIT makes system()'s waitpid fail; sshd still spawns.)
+
+Key custody: private key = ~/.ssh/nbt_knock.pem (laptop) + ~/.ssh/nbt_knock.ppk
+(plink login) + copy in password manager. HU holds ONLY public material.
+Lost key -> bavarian unlock still works -> rotate pair.

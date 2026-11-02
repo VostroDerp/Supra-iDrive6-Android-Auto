@@ -13,7 +13,7 @@ CP=/fs/sda0/opt/conn
 # knockd — cryptographically armed SSH gate (runs only if deployed+enabled:
 # chmod +x to arm, -x to disarm). Listens regardless of which transport
 # (BM3/ENET) is up since it binds 0.0.0.0 — needs no IP wait.
-[ -x $AA/knockd ] && $AA/knockd $AA/knock.conf >>$AA/knock.log 2>&1 &
+[ -x $AA/knockd ] && ( for i in 1 2 3 4 5; do $AA/knockd $AA/knock.conf >>$AA/knock.log 2>&1 && break; sleep 30; done ) &
 
 # Wait for the dongle DHCP address on dwc0 — at boot only the link-local
 # 169.254 address exists; binding that leaves the phone "connecting" forever.

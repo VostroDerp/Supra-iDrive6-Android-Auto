@@ -26,6 +26,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -42,6 +43,8 @@
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#include <openssl/bn.h>
+#include <openssl/bio.h>
 
 #define PROTO_VER   0x01
 #define NONCE_LEN   32
@@ -88,16 +91,48 @@ static void load_conf(const char *path) {
 
 static RSA *load_pubkey(const char *path) {
     FILE *f = fopen(path, "r");
-    if (!f) return NULL;
-    RSA *rsa = PEM_read_RSA_PUBKEY(f, NULL, NULL, NULL);   /* "RSA PUBLIC KEY" PKCS#1 */
+    if (!f) { klog("fopen %s failed: %s", path, strerror(errno)); return NULL; }
+    char buf[8192];
+    size_t len = fread(buf, 1, sizeof buf - 1, f);
     fclose(f);
-    if (!rsa) {                           /* also accept "PUBLIC KEY" SPKI form */
-        f = fopen(path, "r");
-        if (f) {
-            EVP_PKEY *pk = PEM_read_PUBKEY(f, NULL, NULL, NULL);
-            fclose(f);
+    buf[len] = 0;
+    RSA *rsa = NULL;
+    if (buf[0] == '-') {                              /* PEM block */
+        BIO *bio = BIO_new_mem_buf(buf, (int)len);
+        rsa = PEM_read_bio_RSA_PUBKEY(bio, NULL, NULL, NULL);
+        if (!rsa) {
+            BIO_free(bio);
+            bio = BIO_new_mem_buf(buf, (int)len);
+            EVP_PKEY *pk = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
             if (pk) { rsa = EVP_PKEY_get1_RSA(pk); EVP_PKEY_free(pk); }
         }
+        BIO_free(bio);
+        if (!rsa)
+            klog("PEM parse %s failed: %s", path,
+                 ERR_error_string(ERR_get_error(), NULL));
+        return rsa;
+    }
+    /* raw hex modulus (line 1; optional "Modulus=" prefix),
+       optional "e=<hex>" on line 2 — default 65537 */
+    char *nl = strchr(buf, '\n');
+    if (nl) *nl = 0;
+    char *p = buf;
+    while (*p == ' ' || *p == '\t' || *p == '\r') p++;
+    if (!strncasecmp(p, "modulus=", 8)) p += 8;
+    BIGNUM *n = NULL;
+    unsigned long e = 65537;
+    if (nl) {
+        char *ep = nl + 1;
+        if (!strncasecmp(ep, "e=", 2)) e = strtoul(ep + 2, NULL, 16);
+    }
+    if (BN_hex2bn(&n, p) > 0 && n) {
+        rsa = RSA_new();
+        rsa->n = n;
+        rsa->e = BN_new();
+        BN_set_word(rsa->e, e);
+        rsa->flags |= RSA_FLAG_NO_CONSTTIME;
+    } else {
+        klog("hex modulus parse %s failed", path);
     }
     return rsa;
 }
@@ -186,6 +221,8 @@ int main(int argc, char **argv) {
         klog("bind/listen :%s failed: %s", conf_port, strerror(errno));
         return 1;
     }
+
+    signal(SIGPIPE, SIG_IGN);   /* client RST must not kill us on send */
 
     /* daemonize + reap children */
     struct sigaction sa; memset(&sa, 0, sizeof sa);

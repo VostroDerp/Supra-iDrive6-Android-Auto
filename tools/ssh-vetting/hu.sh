@@ -65,6 +65,7 @@ unlock() {
 
 ensure() {  # resolves OMAP ip, unlocking once if needed
   local ip
+  [ -n "${HU_IP:-}" ] && { echo "$HU_IP"; return 0; }   # ENET/direct override
   ip=$(omap_ip) && { echo "$ip"; return 0; }
   unlock || return 1
   ip=$(omap_ip) && { echo "$ip"; return 0; }

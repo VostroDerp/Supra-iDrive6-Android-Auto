@@ -2,20 +2,23 @@
 
 **START HERE NEXT SESSION: `NEXT-SESSION.md` at repo root — ordered checklist,
 authoritative. ITEM 1 = SSH independence (USB-stick armed, key-only dropbear
-from the boot hook — design + recon commands all in the checklist). This is
-PRIORITY ONE: it removes the bavarian-aa.uk single point of failure and must
-be done while the unlock service still works. Then USB → Cinemo → uAP →
+from the boot hook — design + recon commands all in the checklist). DONE (1a knockd): it removes the bavarian-aa.uk single point of failure. Then USB → Cinemo → uAP →
 Miracast → browser-audio binary. FUTURE.md (gitignored, local-only) holds
 the bigger ideas log.**
 
 ## SSH-independence — checklist item 1 (PRIORITY ONE)
-BUILD STATUS (wake-1 ready): knockd.c built + E2E tested on x86 (valid sig
--> spawn, bad/wrong sig -> reject, logs, daemonizes). ARMv7LE binary staged
-at aa-install/knockd (719KB, NEEDED=libsocket.so.3+libc.so.3 only). Laptop:
-tools/ssh-vetting/knock/{knock.py,genkey.sh,knock.conf.sample}. Wake-1 order:
-user runs genkey.sh -> recon-knock.sh gathers pf/dropbear/USB-mount/NbtDiag
--> fill knock.conf SSHCMD + push knock.pub -> wrapper auto-launches knockd
-(guarded [ -x ] in nbt-aad.sh) -> knock.py -> SSH, no bavarian.
+**DEPLOYED + PROVEN 2026-11-02 (cold boot, zero bavarian).** knockd listens
+on dwc0:851 (already passed by stock pf anchor filter_OBD — ZERO firewall
+changes; uap0 can't reach it). Valid RSA-2048 sig -> spawns sshd -f
+/var/opt/aa/sshd_config on :3804, key-only, AuthorizedKeysFile=/var/opt/aa/
+authorized_keys. Boot launch: start-aa.sh guarded hook (5x bounded retry).
+Proven live: ignition cycle -> knockd auto-armed -> knock.py -> 'K' ->
+sshd:3804 -> plink -i ~/.ssh/nbt_knock.ppk root login on hu-omap. Rejects:
+garbage + wrong-key sigs logged 'bad knock'. SIGPIPE-on-RST kill fixed
+(signal(SIGPIPE,SIG_IGN)). Priv key: ~/.ssh/nbt_knock.pem + .ppk + PM copy.
+Pubkey format on HU: raw hex modulus (SDP6.5 PEM parser chokes on new PEM —
+knockd reads hex or PEM). Stock untouched: /etc is RO anyway; bavarian FDAC
+path fully intact = fallback. Lost priv key -> bavarian -> rotate pair.
 
 Problem: SSH unlock depends on wss://pretzel.bavarian-aa.uk:8443 signing an
 RSA-2048 response to the HU's random FD2E challenge (verified: ~41 captured

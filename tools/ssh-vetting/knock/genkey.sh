@@ -23,8 +23,10 @@ else
 fi
 chmod 600 "$KEY"
 
-# public key for the HU — PKCS#1 "RSA PUBLIC KEY" PEM form
+# public key for the HU knockd — PKCS#1 "RSA PUBLIC KEY" PEM form
 openssl rsa -in "$KEY" -RSAPublicKey_out -out "$KEY.pub.pem" ${KNOCK_PASS:+-passin "env:KNOCK_PASS"}
+# same key in OpenSSH authorized_keys format — appended to /etc/ssh/authorized_keys
+ssh-keygen -y -f "$KEY" ${KNOCK_PASS:+-P "$KNOCK_PASS"} > "$KEY.pub"
 
 cat <<EOF
 

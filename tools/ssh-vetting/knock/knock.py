@@ -17,7 +17,7 @@ import socket
 import subprocess
 import sys
 
-PORT = 46610
+PORT = 851
 KEY = os.environ.get("KNOCK_KEY", os.path.expanduser("~/.ssh/nbt_knock.pem"))
 
 
@@ -58,7 +58,7 @@ def main():
     resp = s.recv(16)
     s.close()
     if resp == b"K":
-        print(f"KNOCK ACCEPTED — SSH armed at {ip}:22 (until HU reboot)")
+        print(f"KNOCK ACCEPTED — SSH armed at {ip}:3804 (until HU reboot)")
     elif resp == b"N":
         sys.exit("knock REJECTED — signature didn't verify "
                  "(wrong key? pubkey on HU stale?)")
