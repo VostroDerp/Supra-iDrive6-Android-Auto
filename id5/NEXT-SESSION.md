@@ -1,6 +1,82 @@
 # Next car session — ordered checklist
 
-## Tonight — car session 2026-11-03 (evening). Work top to bottom.
+## Next car session — plan (written 2026-11-03 night, after runs 13–15)
+
+USB Android Auto works on the ID5 (runs 13–15, run log in §0). What is missing is the boot path: nothing of ours
+starts on its own, so after a reboot there is neither AA nor our SSH. This session makes both come up by themselves.
+**Charger on from the start**: on 2026-11-03 the HU kept shutting down for low voltage until the engine ran.
+`C`, `U`, `V` as below.
+
+### N0. Getting in after any reboot (until N1 is done)
+Our knockd does NOT start at boot (findings in the 2026-11-03 results below). Every boot:
+1. `$C fallback unlock` (stock FDAC path over ENET, needs laptop internet; fixed in car.sh dfa6ead). It opens the
+   stock sshd on :22 until the next reboot. `$C fallback status` first: diag :6801 must say open.
+2. `$C fallback sh '/var/opt/aa/knockd /var/opt/aa/knock.conf >>/var/opt/aa/knock.log 2>&1 </dev/null'`
+   (knockd daemonizes itself; the HU has no nohup), then `$C knock` as usual.
+3. Before a run with usb7: start our renderer,
+   `$C sh 'AA=/var/opt/aa; CP=/fs/sda0/opt/conn; MM_RENDERER_CONFIG=$AA/mm-renderer.conf AOI_CONFIG=$AA/aoi LD_LIBRARY_PATH=$CP/lib/carplay:/opt/sys/lib $CP/bin/carplay/mm-renderer -e -v -f -k </dev/null >$AA/mmr.log 2>&1 &'`.
+   Not needed with usb8: PR #65 starts the factory renderer itself (run 15).
+The two release wrappers iDrive starts stay in their dwc0 DHCP loop for good. They are harmless, and
+`car.sh run` does not kill them (pidin lists them as `bin/sh`).
+
+### N1. USB boot wrapper (MUST, ~25 min, one reboot)
+Goal: after a reboot, knock works without the fallback and AA comes up when the phone is plugged in.
+- [ ] Laptop first: write the new wrapper as `id5/tools/hu-install/nbt-aad-usb.sh` (shell-checked on the host):
+      `unset LD_PRELOAD`; start knockd first and unconditionally (option b of IMPROVEMENT-PLAN A1, the interim
+      until NbtService proves itself); no dwc0 DHCP wait; start our mm-renderer if none runs; then
+      `exec /var/opt/aa/nbt-aad-usb7` with `NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0 NBT_VEHICLE=bmw`,
+      AOI/MMR config and `NBT_LOG_FILE=/var/opt/aa/nbt.log`. Read `/opt/aa/nbt-aad.env` (the app exports it):
+      its NBT_AP_* wireless settings stay, but check nothing in it conflicts with USB mode.
+- [ ] Car: `touch /opt/aa/.w && rm /opt/aa/.w` (writable?), keep the old one
+      (`cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1`), push the new one to `/opt/aa/nbt-aad`.
+      The old wireless-only daemon `/var/opt/aa/nbt-aad` stays untouched.
+- [ ] Test without a reboot: kill the stuck wrappers and any test daemon, select Android Auto in the menu (the app
+      starts the wrapper), plug in -> AA. Then reboot: iDrive up -> `$C knock` works with no fallback, plug in -> AA.
+- [ ] Back out: `cp /var/opt/aa/nbt-aad.wrapper.v1 /opt/aa/nbt-aad` (over the fallback if knock is gone).
+
+### N2. NbtService (B6 as written, one reboot; then B7)
+After N1, the wrapper also starts knockd, so B6 only proves the plugin loads and its toggle works. B7
+(`autostart` moved away) is what proves NbtService alone starts knockd. Fallback ready (N0).
+
+### N3. knockd v2 (B4 side by side, then B5's swap)
+Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-boot check relies on N1's wrapper
+(or NbtService) to start knockd; the original wrapper never did.
+
+### Open from 2026-11-03
+- **Reconnect bug (upstream main).** After a mid-session drop the daemon reopened the same, still-enumerated
+  accessory without a new AOA switch. The phone kept its old TLS state, so 595 decrypt failures followed until a
+  physical replug. Log: `id5/local/recon/run-13/nbt-usb13.log` lines ~576–680 (session end, reopen, records at
+  seq 77+ against a fresh ClientHello). Fix idea: when a session ends and the accessory is still there, force a
+  re-enumeration (USB reset or close and wait) before the next session. PR #42 is merged, so this would be a new
+  upstream issue. File it once it repeats, or with a fix.
+- **Why run 13's first session dropped** after 5.8 s ("Phone closed socket or read error" mid-stream, 4 s after
+  `audioconn -b 0xc7` set up the A2DP connection). Not first-connect setup: run 14 was a first connect too and did
+  not drop. The phone logcat has nothing from the AA app; turn on AA's developer logging before the next runs.
+- Nav prompts not tested (Maps sound was off).
+- PR #65 feedback (run 15 works): draft written 2026-11-03, post when the owner OKs it.
+- B2 menu anchors: `/opt/hmi/ID5/data/ro/Plugins` holds only NbtAad, so the stock plugin XMLs are elsewhere.
+  Find them before B8.
+- Firmware/I-level string: no version file found (only `/etc/gps_G6_V7_ver20.cfg`). USER: photo of iDrive's
+  software version screen.
+- Not done: B4–B9d (B9c boot-hook and B9d cluster-arrow recon included).
+
+## Car session 2026-11-03 (evening) — DONE. Results first, then the checklist as worked.
+
+**Results.**
+- **USB Android Auto works on the ID5**, with upstream main (usb7, 2aa91f7) in direct mode plus the driver claim.
+  Video, touch, knob, keys, BT media, the Assistant, calls, iDrive and back, reverse, and replug (<5 s to the picture)
+  all work. The BMW identity (`NBT_VEHICLE=bmw`, run 14) shows BMW and its exit icon. PR #65's factory renderer works too (run 15).
+- **knockd has never started on its own.** The release wrapper `/opt/aa/nbt-aad` (Devin, 2 Nov 00:58) waits
+  forever for a non-169.254 DHCP lease on dwc0 (the BM3 dongle network) and has no knockd step. `start-aa.sh` does
+  start knockd, but nothing runs it at boot. Every start in `knock.log` was manual. The release daemon it would
+  launch, `/var/opt/aa/nbt-aad` (1 Nov), is wireless-only, so AA does not come up after a reboot either.
+  Fix: N1.
+- **The way back works.** `car.sh fallback` had a bug (port_open ignored the diag IP, so it never got past its
+  check); fixed, then the stock unlock opened :22 first time and was used to start knockd by hand.
+- With no release daemon running, `GapErrorCode=0` (clean SPP registration): consistent with the open hypothesis
+  that the boot-autostarted release daemon caused GapErrorCode=5 before.
+- `pidin fds` hung `collect` for minutes in run 13; now capped at 60 s.
+
 
 `C=id5/tools/car/car.sh` (from the repo root), `U=../Supra-iDrive6-Android-Auto-usb/milestone-7`,
 `V=id5/local/deploy/v2-2026-11-03` (knockd v2 + NbtService, see `$V/MANIFEST.txt`).
@@ -35,49 +111,55 @@
       and in hand at plug-in, accept every prompt, note which ones appear (the run's prediction includes them).
 
 ### B1. Car setup (MUST, ~10 min)
-- [ ] `$C status` -> `$C knock`. Note the HU date and uptime: `$C sh 'date; uptime 2>/dev/null; pidin info | head -3'`.
-- [ ] Is the autostarted release daemon running? `$C sh 'pidin ar | grep -E "nbt-aad|knockd|mm-renderer"'`.
-- [ ] Push the USB binaries (step 0b.2: usb7, usb5, usb4, usb6 under their names).
-- [ ] Push knockd v2 side by side (nothing replaced yet):
+- [x] `$C status` -> `$C knock`. Note the HU date and uptime: `$C sh 'date; uptime 2>/dev/null; pidin info | head -3'`.
+      2026-11-03: knockd :851 closed (never autostarts, see results); in through the fallback, knockd started by hand.
+- [x] Is the autostarted release daemon running? `$C sh 'pidin ar | grep -E "nbt-aad|knockd|mm-renderer"'`.
+      2026-11-03: no daemon, no knockd, no mm-renderer; two wrappers stuck in the dwc0 DHCP loop.
+- [x] Push the USB binaries (step 0b.2: usb7, usb5, usb4, usb6 under their names).
+      2026-11-03: usb7/usb5/usb4 pushed; usb6 replaced by usb8 (main 2aa91f7 + #65 18d402b, 563614 B) for run 15.
+- [x] Push knockd v2 side by side (nothing replaced yet):
       `$C push $V/knockd /var/opt/aa/knockd.v2`, `$C push $V/knock.conf.v2test /var/opt/aa/knock.conf.v2test`,
       `$C push $V/sshd_config.v2test /var/opt/aa/sshd_config.v2test`, `$C push $V/knock.conf.v2 /var/opt/aa/knock.conf.v2`,
       `$C push $V/sshd_config.v2 /var/opt/aa/sshd_config.v2`.
-- [ ] Stage NbtService (no plugin dir yet): `$C sh 'mkdir -p /var/opt/aa/stage/NbtService'`, then push the five
+- [x] Stage NbtService (no plugin dir yet): `$C sh 'mkdir -p /var/opt/aa/stage/NbtService'`, then push the five
       files from `$V/NbtService/` there (`libNbtService.so` under the name `NbtService`, as its README says).
-- [ ] **Fallback drill, before any reboot** (stock path over ENET, nothing of ours involved):
+- [x] **Fallback drill, before any reboot** (stock path over ENET, nothing of ours involved):
       `$C fallback status` -> `$C fallback probe` (read-only) -> `$C fallback unlock` -> `$C fallback sh 'hostname'`.
       Proves the way back works over the cable. The stock SSH it opens closes again at the next reboot.
       If it fails: no reboots tonight (B5–B8 skipped), only no-reboot blocks.
-- [ ] Push the Wi-Fi sender: `$C push id5/tools/wifi/mwu-send /var/opt/aa/mwu-send` (built, host-tested).
-- [ ] Back up what B5/B6 change: `$C sh 'cp /var/opt/aa/knockd /var/opt/aa/knockd.v1; cp /var/opt/aa/knock.conf /var/opt/aa/knock.conf.v1; cp /var/opt/aa/sshd_config /var/opt/aa/sshd_config.v1'`.
+- [x] Push the Wi-Fi sender: `$C push id5/tools/wifi/mwu-send /var/opt/aa/mwu-send` (built, host-tested).
+- [x] Back up what B5/B6 change: `$C sh 'cp /var/opt/aa/knockd /var/opt/aa/knockd.v1; cp /var/opt/aa/knock.conf /var/opt/aa/knock.conf.v1; cp /var/opt/aa/sshd_config /var/opt/aa/sshd_config.v1'`.
 
 ### B2. Read-only recon (MUST, ~5 min, changes nothing)
-- [ ] Step 0e (interfaces, pf, mounts, /var plugin dir, sshd user/version, knock.log, stock plugin anchors).
-- [ ] Step 0b.4 (PR #65's paths and carplay.ini).
-- [ ] Menu anchors for A5. For each stock plugin, its `<pluginApp ... insertStateID=...>` line from 0e. USER: say
+- [x] Step 0e (interfaces, pf, mounts, /var plugin dir, sshd user/version, knock.log, stock plugin anchors).
+- [x] Step 0b.4 (PR #65's paths and carplay.ini).
+- [-] Menu anchors for A5 (2026-11-03: no stock plugin XMLs under /opt/hmi/ID5/data/ro/Plugins; see Open). For each stock plugin, its `<pluginApp ... insertStateID=...>` line from 0e. USER: say
       which iDrive menu each of those stock rows appears in (e.g. SecurityMenu / ActiveSeating). That maps
       insertStateID -> menu, so we know the Settings (or My Vehicle) value.
-- [ ] Our sshd accepts the v2 config: `$C sh '/usr/sbin/sshd -t -f /var/opt/aa/sshd_config.v2test && echo OK'`
-      (old OpenSSH may reject an option; fix the config before B4 if so).
-- [ ] Wi-Fi state, for the wireless goal: `$C sh 'ifconfig uap0; ifconfig wfd0; pidin ar | grep -i -E "wlan|mwud|wpa|hostap|acpd|scp"'`
+- [x] Our sshd accepts the v2 config: `$C sh '/usr/sbin/sshd -t -f /var/opt/aa/sshd_config.v2test && echo OK'`
+      (old OpenSSH may reject an option; fix the config before B4 if so). 2026-11-03: v2test and v2 both OK.
+- [x] Wi-Fi state, for the wireless goal: `$C sh 'ifconfig uap0; ifconfig wfd0; pidin ar | grep -i -E "wlan|mwud|wpa|hostap|acpd|scp"'`
       and `$C sh 'ls -l /opt/conn/bin/mwud /opt/conn/bin/mwu_dev.conf /opt/conn/bin/wifidirect_defaults.conf'`.
-- [ ] Firmware/I-level string for a future `requirements.md` row: `$C sh 'ls /etc/*ver* /fs/sda0/*ver* 2>/dev/null'`
+- [x] Firmware/I-level string for a future `requirements.md` row: `$C sh 'ls /etc/*ver* /fs/sda0/*ver* 2>/dev/null'`
       and read what's there. If nothing obvious, iDrive's software version screen (USER, photo).
-- [ ] `$C pull` the 0e output into `id5/local/recon/improve-2026-11-03.txt` (or pipe it there).
-- [ ] IVA-HD recon for renderer option A (IMPROVEMENT-PLAN F9, read-only; ~3 min). Better still in B3 while AA video
+- [x] `$C pull` the 0e output into `id5/local/recon/improve-2026-11-03.txt` (or pipe it there).
+- [x] IVA-HD recon for renderer option A (IMPROVEMENT-PLAN F9, read-only; ~3 min). Better still in B3 while AA video
       is on screen (section 5 then lists what mm-renderer loaded to decode); if B3 fails, run it here:
       `$C push id5/tools/recon/ivahd-recon.sh /var/opt/aa/ivahd-recon.sh`,
       `$C sh 'sh /var/opt/aa/ivahd-recon.sh > /var/opt/aa/ivahd-recon.txt 2>&1'`, `$C pull /var/opt/aa/ivahd-recon.txt`,
       then `$C pull /var/opt/aa/ivahd-pull/<name> id5/local/pulled/ivahd/<name>` for each file section 8 lists.
       It answers: where libdce / TILER / IPC live, which process owns the decoder, the IPU firmware, the screen
       config (displays, NV12), and the LayerManager screens (also for F10, the cluster).
+      2026-11-03: run during run 13's picture; output `id5/local/recon/ivahd-recon-2026-11-03.txt`, 12 libs
+      (libdce.so.1, libtilerusr, libmemmgr, ipc-plugin, the dce3 decoder, ...) in `id5/local/pulled/ivahd/`.
+      0e/0b.4/Wi-Fi/sshd output: `id5/local/recon/improve-2026-11-03.txt`, `run-14/pr65-assumptions.txt`.
 
 ### B3. USB Android Auto (MUST, the priority, ~40 min)
-- [ ] Run 13: prediction in the run log first, then `$C run 13 nbt-aad-usb7`. Read the stage table with the
+- [x] Run 13: prediction in the run log first, then `$C run 13 nbt-aad-usb7`. Read the stage table with the
       decision tree (0d). Each next run changes ONE thing the tree names (usb4 = kill-bait, etc.).
-- [ ] Desk-rig result (B0) vs car result: same stage? If the rig got video and the car didn't, the difference is
+- [x] Desk-rig result (B0) vs car result: same stage? If the rig got video and the car didn't, the difference is
       the QNX side (claim, io-usb, NbtMediaMainApp), which is exactly what 0d's direct-mode rows check.
-- [ ] IF SUCCESS, same session, note each one:
+- [x] IF SUCCESS, same session, note each one:
       - picture: sharpness and lag;
       - touch, knob (turn, push, tilt), back / MENU keys;
       - media audio: usb7 defaults to Bluetooth A2DP (phone must be BT-connected to the car); browser audio is
@@ -86,16 +168,18 @@
       - reverse gear (camera, then AA back);
       - unplug and replug (reconnect is the PR's known weak spot);
       - time from plug to picture.
-- [ ] IF SUCCESS, separate run: BMW identity. With no CarPlay FSC there is no carplay.ini logo/Manufacturer, so
+- [x] IF SUCCESS, separate run: BMW identity. With no CarPlay FSC there is no carplay.ini logo/Manufacturer, so
       car_config.hpp falls back to Toyota (the phone lists the car as Toyota, and Devin's run showed a Toyota exit
       icon). `$C run <N> nbt-aad-usb7 NBT_VEHICLE=bmw` (extra args go into the env). It also changes the vehicle id, so the phone sees a NEW
       car (setup prompts again, the Toyota entry stays). Not before USB works.
-- [ ] IF SUCCESS, while the picture is up: the IVA-HD recon (B2, last item) if not done yet.
-- [ ] IF SUCCESS: the PR #65 run (0d, last bullet): `slay mm-renderer`, then `RUN_MMR_CONF=0 $C run <N> nbt-aad-usb6`.
+- [x] IF SUCCESS, while the picture is up: the IVA-HD recon (B2, last item) if not done yet.
+- [x] IF SUCCESS: the PR #65 run (0d, last bullet): `slay mm-renderer`, then `RUN_MMR_CONF=0 $C run <N> nbt-aad-usb6`.
       Afterwards restart our renderer (`id5/tools/car/start-aa.sh` step 1) if video stays black.
-- [ ] Leave the release daemon as it was found (kill the test binary; the next boot autostarts the release one).
+- [x] Leave the release daemon as it was found (kill the test binary; the next boot autostarts the release one).
+      2026-11-03: left usb8 running for the drive home; nothing stock or release changed. (The next boot does NOT
+      give working AA: the wrapper never gets past its DHCP loop. N1.)
 
-### B4. knockd v2, side by side (MUST, ~15 min, no reboot, v1 untouched)
+### B4. knockd v2, side by side (MUST, ~15 min, no reboot, v1 untouched) — NOT DONE 2026-11-03, see N3
 - [ ] Start v2 on the test ports: `$C sh '/var/opt/aa/knockd.v2 /var/opt/aa/knock.conf.v2test'`.
       It listens on 8851, control 52792, sshd 3805, window 120 s, log `/var/opt/aa/knock-v2test.log`.
 - [ ] pf only passes 851/3804, so reach the test ports through the v1 session (no pf change):
@@ -109,13 +193,13 @@
 
 ### B5. Swap to knockd v2 + cold boot (MUST if B4 passed, ~10 min; fallback ready, B0)
 - [ ] `$C sh 'cp /var/opt/aa/knockd.v2 /var/opt/aa/knockd; cp /var/opt/aa/knock.conf.v2 /var/opt/aa/knock.conf; cp /var/opt/aa/sshd_config.v2 /var/opt/aa/sshd_config; chmod +x /var/opt/aa/knockd'`
-      (the wrapper still starts knockd at boot, now v2 on 851/3804).
+      (2026-11-03: nothing starts knockd at boot yet, so this needs N1's wrapper or NbtService first.)
 - [ ] Reboot the HU (hold the power button ~30 s). After iDrive is up: `$C knock` -> v2 knock accepted, login works.
 - [ ] `$C sh 'tail -20 /var/opt/aa/knock.log'`: v2 start line, ALLOW_NETS, sshd started, and the window closes
       after 900 s (check later in the session; `car.sh` re-knocks by itself).
 - [ ] If it fails: `$C fallback unlock`, then restore the `.v1` copies from B1 and reboot.
 
-### B6. NbtService plugin (MUST if B5 passed, ~20 min; fallback ready; riskiest, so last of the MUSTs)
+### B6. NbtService plugin (MUST if B5 passed, ~20 min; fallback ready; riskiest, so last of the MUSTs) — NOT DONE, see N2
 - [ ] Recon (B2) confirmed `/var/opt/hmi/data/ID5/Plugins` exists/is used? If yes, install there (recovery =
       `rm -r`): `$C sh 'mkdir -p /var/opt/hmi/data/ID5/Plugins/NbtService && cp /var/opt/aa/stage/NbtService/* /var/opt/hmi/data/ID5/Plugins/NbtService/'`.
       If not, stop here and decide together (the read-only /opt path gives up the easy recovery).
@@ -199,6 +283,8 @@ from a writable location, or a script that sources a drop-in directory). No inst
       (`test_controls -r -k <FBlock keys found here>` during guidance, observe-only) is for a later session.
 
 ### B10. Wrap-up (MUST, ~5 min)
+- [x] 2026-11-03: knockd v1 (started by hand) and stock :22 open until the next reboot; NbtService only staged
+      (`/var/opt/aa/stage/NbtService`); knockd v2 files beside v1; `.v1` backups made. Logs pulled per run.
 - [ ] Final state: release daemon autostart restored, knockd (v1 or v2, whichever passed) answering, NbtService
       kept or disabled. Write down which.
 - [ ] Final `$C knock` + `$C login` works. Pull knock.log, the NbtService log if any, and `sloginfo`.
@@ -277,7 +363,8 @@ $AA/$BIN >$AA/nbt-usb$N-stdout.log 2>&1 &
 
 Never NBT_USB_CLAIM_DRIVER=0: it lets devc-serusb-aoap start and create /dev/oap*,
 which NbtMediaMainApp reads from — the root cause. Identity envs not needed
-(default Android / Android Auto). Audio defaults to browser mode (0xb8 mixer).
+(default Android / Android Auto). Audio: upstream main (usb7+) defaults to Bluetooth A2DP; the PR #42-era
+binaries (usb4/5) default to browser mode (0xb8 mixer).
 
 ### 0d. Decision tree (read the stage table top-down; first 0 or bad row decides)
 - `claim NOT effective` > 0, or no `driver path claimed` -> the race is back.
@@ -297,7 +384,7 @@ which NbtMediaMainApp reads from — the root cause. Identity envs not needed
   should be impossible). Keep the log; next run unchanged once to check it repeats;
   then `slay NbtMediaMainApp` run (reboot restores) to rule the media app in/out.
 - `media frames` > 0 and AA on screen -> SUCCESS. Same run: note video, touch, knob,
-  audio (browser mode), call audio; then unplug/replug once (reconnect is a known
+  audio (A2DP on usb7+, browser mode on usb4/5), call audio; then unplug/replug once (reconnect is a known
   PR weak spot). Then: post results to PR #42.
 - After a SUCCESS only: the PR #65 run (one variable = who starts mm-renderer). Kill the
   wrapper's renderer (`slay mm-renderer`), launch usb6 with the SAME env but WITHOUT
@@ -545,6 +632,8 @@ nbt-aad-usb; test browser audio after USB result is known.
 ## Status log
 
 (append one line per attempt)
+- 2026-11-03 evening: USB AA works on the ID5 (runs 13–15: usb7, usb7 + BMW identity, usb8 = main + #65).
+  knockd never autostarts (wrapper stuck in its dwc0 DHCP loop); fallback fixed and used. Next: N1–N3.
 - pending: everything below is untested on car
 
 Pull tomorrow: NBTMediaMainApp (/fs/sda0/opt/mm/bin/, 8.7MB) + run on HU:

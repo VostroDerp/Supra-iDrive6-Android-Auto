@@ -30,10 +30,13 @@ Car order: knockd v2 first (one step, cold-boot check), then the plugin (one ste
 FDAC unlock ready as the way back).
 
 ### A1. P1 — Separate SSH access from the AA wrapper — APPROVED 2026-11-03, BUILT (option a, not car-tested)
-Today: HMI loads the NbtAad plugin -> plugin sees `/var/opt/aa/autostart` -> launches the
-wrapper `nbt-aad.sh` -> the wrapper starts knockd. Anything that breaks that chain also
+Intended: HMI loads the NbtAad plugin -> plugin sees `/var/opt/aa/autostart` -> launches the
+wrapper `/opt/aa/nbt-aad` -> the wrapper starts knockd. Anything that breaks that chain also
 removes SSH: a wrapper edit, autostart moved aside (planned for one hypothesis test), or the
 plugin's boot guard latching autostart off after 3 crash-boots in 15 min.
+**Car check 2026-11-03: the chain was never complete.** The wrapper on the car has no knockd step and
+waits forever for a BM3 dongle DHCP lease on dwc0; every knockd start in knock.log was manual. Interim:
+the USB boot wrapper (NEXT-SESSION N1) starts knockd first (option b); NbtService stays the goal.
 
 Options:
 - **a. A small dedicated PluginApp ("NbtService")** — CHOSEN, built 2026-11-03 — that only
