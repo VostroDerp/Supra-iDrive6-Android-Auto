@@ -27,8 +27,9 @@
       completes TLS and starts video. If it fails, run 13's prediction changes. ~15 min.
 - [x] Network: the car is in range of the home Wi-Fi. Laptop and phone both on it (adb over Wi-Fi works, logcat
       for `run`), laptop internet for `car.sh fallback unlock` through it, HU over the ENET cable. No hotspot.
-- [x] Phone state: AA data NOT wiped, the car is listed in AA settings (as Toyota, see B3 identity note).
-      Leave it as is for run 13 (one variable).
+- [x] Phone state: AA data NOT wiped. The Toyota car entry was DELETED after the desk rig (user's choice: start
+      fresh). So run 13 is also the phone's first connect to this car: expect its setup prompts. Phone unlocked
+      and in hand at plug-in, accept every prompt, note which ones appear (the run's prediction includes them).
 
 ### B1. Car setup (MUST, ~10 min)
 - [ ] `$C status` -> `$C knock`. Note the HU date and uptime: `$C sh 'date; uptime 2>/dev/null; pidin info | head -3'`.
