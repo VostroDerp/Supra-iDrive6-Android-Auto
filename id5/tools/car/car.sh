@@ -43,7 +43,8 @@ ID5="$(cd "$HERE/../.." && pwd)"                 # id5/ (repo root/id5)
 LOCAL=${ID5_LOCAL:-$ID5/local}                     # gitignored: recon output, pulls
 
 die() { echo "car.sh: $*" >&2; exit 1; }
-port_open() { timeout 3 bash -c ": </dev/tcp/$HU_IP/$1" 2>/dev/null; }
+# port_open [host] port (host defaults to HU_IP)
+port_open() { local h=$HU_IP; [ $# -gt 1 ] && { h=$1; shift; }; timeout 3 bash -c ": </dev/tcp/$h/$1" 2>/dev/null; }
 run() { "$PLINK" -ssh -batch -i "$PPK" -P "$SSH_PORT" "root@$HU_IP" "$@"; }
 
 knock() {
@@ -145,7 +146,9 @@ case "$cmd" in
             fi
         done
         run 'pidin ar' > "$out/pidin-ar.txt" 2>&1
-        run 'pidin fds' > "$out/pidin-fds.txt" 2>&1
+        # pidin fds can block on a busy resource manager (run 13): cap it.
+        timeout 60 "$PLINK" -ssh -batch -i "$PPK" -P "$SSH_PORT" "root@$HU_IP" 'pidin fds' > "$out/pidin-fds.txt" 2>&1 \
+            || echo "(pidin fds stopped after 60 s)" >> "$out/pidin-fds.txt"
         run 'ls -l /dev/android* /dev/oap* /dev/btspp* 2>&1' > "$out/dev-nodes.txt" 2>&1
         run 'sloginfo' > "$out/sloginfo.txt" 2>&1
         if command -v adb >/dev/null && [ "$(adb get-state 2>/dev/null)" = device ]; then
