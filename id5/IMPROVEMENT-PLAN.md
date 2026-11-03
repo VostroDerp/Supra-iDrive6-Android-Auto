@@ -97,6 +97,9 @@ In sshd_config:
 - Optionally, an idle-shell timeout through `TMOUT` in the session environment.
 
 ### A5. P2 — iDrive menu toggle "SSH for 15 minutes" — APPROVED 2026-11-03, BUILT (placement still to decide)
+**Next (decided 2026-11-03):** prove it in Media/Radio (the anchor the build uses), run the menu recon
+(NEXT-SESSION 0e), then move it to **Settings** (fallback My Vehicle). The move is one XML attribute plus a
+rebuild and a reboot. Both are queued in tonight's session (NEXT-SESSION, "Tonight" B2 + B8).
 Being in the car is the authorization: the toggle opens the A3 window directly, with no knock.
 sshd itself stays key-only.
 - Mechanism: the plugin sends `open` to knockd on a 127.0.0.1 UDP port (or writes a flag
@@ -314,6 +317,18 @@ breaks.
   project is alive; bavarian is a second provider.
 - No hardware route has been researched (pulling the unit, eMMC, serial console). It
   carries real risk to the unit; last resort only.
+
+---
+
+### F7. P2 — pf anchor so knockd/sshd answer on the car's Wi-Fi (uap0) (from A2, 2026-11-03)
+knockd v2 already allows 172.16.224.0/24, but pf only passes TCP 851/3804 on dwc0. The `PFCMD` hook and
+`id5/tools/knock/pf.nbtaad.sample` ship, commented out. Load it when the car's own AP works (wireless goal / F2),
+after the `pfctl -s rules` / `-s Anchors` recon. Until then, Wi-Fi clients can't reach the gate, which is fine.
+
+### F8. P3 — Idle-shell timeout (`TMOUT`) for our sshd sessions (from A3, 2026-11-03)
+Left out on purpose: it would cut long `car.sh collect` / `run` sessions short, and the ClientAlive keep-alives
+already drop dead sessions. Review later: maybe a long value (e.g. 2 h), or only for interactive `login`
+shells and not `car.sh sh` commands.
 
 ---
 

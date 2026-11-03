@@ -1,5 +1,130 @@
 # Next car session — ordered checklist
 
+## Tonight — car session 2026-11-03 (evening). Work top to bottom.
+
+`C=id5/tools/car/car.sh` (from the repo root), `U=../Supra-iDrive6-Android-Auto-usb/milestone-7`,
+`V=id5/local/deploy/v2-2026-11-03` (knockd v2 + NbtService, see `$V/MANIFEST.txt`).
+**MUST** = the point of the session. **IF TIME** = only after every MUST above it is done.
+
+### Stop rules (any time)
+- iDrive unstable, or the HMI restarts on its own -> stop that block and undo its last change
+  (`touch /var/opt/aa/service.disable` or `rm -r` the plugin dir). Don't debug in the car.
+- Never leave the car without a known SSH path. The last thing we do is a final knock + login.
+- Two USB runs failing at the same stage -> stop USB for tonight and go on to the next blocks.
+- Every reboot: note the time, wait for iDrive, then `$C status` before anything else.
+- Battery charger on for the whole session.
+
+### B0. Before going to the car (desk)
+- [x] PR #42 tip still d7ba352, PR #65 still 18d402b (checked 11:30): the staged binaries are current.
+- [x] Staged: `$U/nbt-aad-usb5-vanilla` (556253 B), `$U/nbt-aad-usb4-patched` (557117 B),
+      `$U/nbt-aad-usb6-mmr` (561950 B), and `$V` (knockd v2, its configs, NbtService). Host tests green.
+- [ ] USER: desk-rig run with the phone (`id5/tools/desk-rig/README.md`: udev rule once, then `make run`;
+      then `make run ARGS="--protocol 2"`). It tells us before the car whether the phone accepts our identity,
+      completes TLS and starts video. If it fails, run 13's prediction changes. ~15 min.
+- [ ] USER: phone paired for wireless adb (`adb pair` / `adb connect`) on a network the laptop also reaches
+      from the car (phone hotspot works). Otherwise `run` can't collect logcat.
+- [ ] USER: the fallback is ready **before any reboot tonight**: BM3 dongle in the OBD port, laptop internet,
+      the bavarian unlock (`id5/tools/legacy/hu.sh unlock`) known to work. It's the way back if the HMI or
+      knockd fails after a reboot.
+- [ ] USER: note the phone state (AA data wiped? car entry in AA settings? USB preference?).
+
+### B1. Car setup (MUST, ~10 min)
+- [ ] `$C status` -> `$C knock`. Note the HU date and uptime: `$C sh 'date; uptime 2>/dev/null; pidin info | head -3'`.
+- [ ] Is the autostarted release daemon running? `$C sh 'pidin ar | grep -E "nbt-aad|knockd|mm-renderer"'`.
+- [ ] Push the USB binaries (step 0b.2: usb5, usb4, usb6 under their names).
+- [ ] Push knockd v2 side by side (nothing replaced yet):
+      `$C push $V/knockd /var/opt/aa/knockd.v2`, `$C push $V/knock.conf.v2test /var/opt/aa/knock.conf.v2test`,
+      `$C push $V/sshd_config.v2test /var/opt/aa/sshd_config.v2test`, `$C push $V/knock.conf.v2 /var/opt/aa/knock.conf.v2`,
+      `$C push $V/sshd_config.v2 /var/opt/aa/sshd_config.v2`.
+- [ ] Stage NbtService (no plugin dir yet): `$C sh 'mkdir -p /var/opt/aa/stage/NbtService'`, then push the five
+      files from `$V/NbtService/` there (`libNbtService.so` under the name `NbtService`, as its README says).
+- [ ] Back up what B5/B6 change: `$C sh 'cp /var/opt/aa/knockd /var/opt/aa/knockd.v1; cp /var/opt/aa/knock.conf /var/opt/aa/knock.conf.v1; cp /var/opt/aa/sshd_config /var/opt/aa/sshd_config.v1'`.
+
+### B2. Read-only recon (MUST, ~5 min, changes nothing)
+- [ ] Step 0e (interfaces, pf, mounts, /var plugin dir, sshd user/version, knock.log, stock plugin anchors).
+- [ ] Step 0b.4 (PR #65's paths and carplay.ini).
+- [ ] Menu anchors for A5. For each stock plugin, its `<pluginApp ... insertStateID=...>` line from 0e. USER: say
+      which iDrive menu each of those stock rows appears in (e.g. SecurityMenu / ActiveSeating). That maps
+      insertStateID -> menu, so we know the Settings (or My Vehicle) value.
+- [ ] Our sshd accepts the v2 config: `$C sh '/usr/sbin/sshd -t -f /var/opt/aa/sshd_config.v2test && echo OK'`
+      (old OpenSSH may reject an option; fix the config before B4 if so).
+- [ ] Wi-Fi state, for the wireless goal: `$C sh 'ifconfig uap0; ifconfig wfd0; pidin ar | grep -i -E "wlan|mwud|wpa|hostap|acpd"'`.
+- [ ] Firmware/I-level string for a future `requirements.md` row: `$C sh 'ls /etc/*ver* /fs/sda0/*ver* 2>/dev/null'`
+      and read what's there. If nothing obvious, iDrive's software version screen (USER, photo).
+- [ ] `$C pull` the 0e output into `id5/local/recon/improve-2026-11-03.txt` (or pipe it there).
+
+### B3. USB Android Auto (MUST, the priority, ~40 min)
+- [ ] Run 13: prediction in the run log first, then `$C run 13 nbt-aad-usb5`. Read the stage table with the
+      decision tree (0d). Each next run changes ONE thing the tree names (usb4 = kill-bait, etc.).
+- [ ] Desk-rig result (B0) vs car result: same stage? If the rig got video and the car didn't, the difference is
+      the QNX side (claim, io-usb, NbtMediaMainApp), which is exactly what 0d's direct-mode rows check.
+- [ ] IF SUCCESS, same session, note each one:
+      - picture: sharpness and lag;
+      - touch, knob (turn, push, tilt), back / MENU keys;
+      - media audio (browser mode), nav prompts, the Assistant (mic), a phone call;
+      - iDrive and back (MENU key, then the Android Auto entry);
+      - reverse gear (camera, then AA back);
+      - unplug and replug (reconnect is the PR's known weak spot);
+      - time from plug to picture.
+- [ ] IF SUCCESS: the PR #65 run (0d, last bullet): `slay mm-renderer`, then `RUN_MMR_CONF=0 $C run <N> nbt-aad-usb6`.
+      Afterwards restart our renderer (`id5/tools/car/start-aa.sh` step 1) if video stays black.
+- [ ] Leave the release daemon as it was found (kill the test binary; the next boot autostarts the release one).
+
+### B4. knockd v2, side by side (MUST, ~15 min, no reboot, v1 untouched)
+- [ ] Start v2 on the test ports: `$C sh '/var/opt/aa/knockd.v2 /var/opt/aa/knock.conf.v2test'`.
+      It listens on 8851, control 52792, sshd 3805, window 120 s, log `/var/opt/aa/knock-v2test.log`.
+- [ ] pf only passes 851/3804, so reach the test ports through the v1 session (no pf change):
+      `plink -ssh -i ~/.ssh/nbt_knock.ppk -P 3804 -N -L 8851:127.0.0.1:8851 -L 3805:127.0.0.1:3805 root@169.254.199.119 &`
+- [ ] `python3 id5/tools/knock/knock.py 127.0.0.1 8851` -> "KNOCK ACCEPTED" (proto 2, hu nbt-id5).
+- [ ] Log in through it: `plink -ssh -i ~/.ssh/nbt_knock.ppk -P 3805 root@127.0.0.1 'echo v2-sshd-ok'`.
+- [ ] Open a long session on 3805 (e.g. `login` with `sleep 300`), wait >120 s: knock-v2test.log shows the window
+      closing, a NEW login on 3805 is refused, and the long session is still alive.
+- [ ] Wrong key / garbage: `python3 -c "import socket;s=socket.create_connection(('127.0.0.1',8851));s.recv(64);s.send(b'x'*256);print(s.recv(4))"` -> `N`, logged once.
+- [ ] Clean up: kill knockd.v2 and its sshd (`pidin ar | grep v2test`), kill the tunnel. Pull knock-v2test.log.
+
+### B5. Swap to knockd v2 + cold boot (MUST if B4 passed, ~10 min; fallback ready, B0)
+- [ ] `$C sh 'cp /var/opt/aa/knockd.v2 /var/opt/aa/knockd; cp /var/opt/aa/knock.conf.v2 /var/opt/aa/knock.conf; cp /var/opt/aa/sshd_config.v2 /var/opt/aa/sshd_config; chmod +x /var/opt/aa/knockd'`
+      (the wrapper still starts knockd at boot, now v2 on 851/3804).
+- [ ] Reboot the HU (hold the power button ~30 s). After iDrive is up: `$C knock` -> v2 knock accepted, login works.
+- [ ] `$C sh 'tail -20 /var/opt/aa/knock.log'`: v2 start line, ALLOW_NETS, sshd started, and the window closes
+      after 900 s (check later in the session; `car.sh` re-knocks by itself).
+- [ ] If it fails: fallback unlock, then restore the `.v1` copies from B1 and reboot.
+
+### B6. NbtService plugin (MUST if B5 passed, ~20 min; fallback ready; riskiest, so last of the MUSTs)
+- [ ] Recon (B2) confirmed `/var/opt/hmi/data/ID5/Plugins` exists/is used? If yes, install there (recovery =
+      `rm -r`): `$C sh 'mkdir -p /var/opt/hmi/data/ID5/Plugins/NbtService && cp /var/opt/aa/stage/NbtService/* /var/opt/hmi/data/ID5/Plugins/NbtService/'`.
+      If not, stop here and decide together (the read-only /opt path gives up the easy recovery).
+- [ ] Reboot. USER watches: iDrive comes up normally, the "Service" row is in Media/Radio (below Android Auto?),
+      it opens, the "SSH (15 min)" checkbox and status row render (photos of each screen, for the README's
+      unverified items: row order, status line, padlock icon).
+- [ ] Toggle on -> status shows "open"; from the laptop, `plink ... -P 3804` logs in **without a knock**. Toggle off ->
+      new logins refused.
+- [ ] Android Auto still autostarts and the AA menu entry still works (both plugins loaded).
+- [ ] If anything is wrong: `touch /var/opt/aa/service.disable` (soft) or `rm -r` the plugin dir, reboot.
+
+### B7. Prove the plugin arms the gate on its own (IF TIME, one reboot)
+- [ ] `$C sh 'mv /var/opt/aa/autostart /var/opt/aa/autostart.off'` -> reboot. The AA wrapper doesn't run, so if
+      `$C knock` works, NbtService started knockd (A1 proven). Fallback if not: toggle in the plugin, else the unlock.
+- [ ] Same boot, the open hypothesis: is the AndroidAuto SPP record still registered with no AA daemon running?
+      (`sdptool`-style check from the laptop or the daemon log at its next manual start: GapErrorCode=5 or not.)
+- [ ] Restore: `mv /var/opt/aa/autostart.off /var/opt/aa/autostart` (takes effect next boot; start AA from the menu now).
+
+### B8. Move the toggle to Settings (IF TIME; only if B6 passed and B2 found the Settings anchor)
+- [ ] Laptop: set `insertStateID` (and `insertAfterFocusID` if needed) in `id5/tools/nbtservice/NbtService.xml`,
+      `make -C id5/tools/nbtservice test car`, push the XML (and the .so only if rebuilt), reboot, check the row.
+      Not found / doesn't show -> My Vehicle anchor, else back to Media/Radio.
+
+### B9. Exploration (IF TIME, read-only)
+- [ ] USER: does iDrive offer a Wi-Fi hotspot or Wi-Fi settings menu at all (issue #12 mentions a hotspot option)? Photo.
+- [ ] `$C sh 'grep -n -i -E "wlan|wifi|uap|hostap" /opt/conn/etc/*.cfg 2>/dev/null | head -40'`: which Wi-Fi
+      processes the CarPlay package would start. Input for asking tom-pryor about his unpublished IPC PoC (#12).
+
+### B10. Wrap-up (MUST, ~5 min)
+- [ ] Final state: release daemon autostart restored, knockd (v1 or v2, whichever passed) answering, NbtService
+      kept or disabled. Write down which.
+- [ ] Final `$C knock` + `$C login` works. Pull knock.log, the NbtService log if any, and `sloginfo`.
+- [ ] Laptop: run log filled in; commit the notes (`id5/`), `id5/local/` stays local.
+
 ## 0. [ ] USB-AA direct-mode test — structured (rewritten 2026-11-03 night)
 
 Rules: ONE change per run. Write the prediction BEFORE the run. `collect` after
