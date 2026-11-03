@@ -674,3 +674,18 @@ NEXT CAR TEST (one command, usb3 already on HU):
   LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:/fs/sda0/opt/conn/lib/carplay:/opt/sys/lib \
   /var/opt/aa/nbt-aad-usb3 &
   -> replug phone; expect records past ~#6 to keep decrypting + video frames.
+
+CINEMO/NME ACTIVATION ANALYSIS (offline, pulled binaries): the dormant engine
+needs per-unit provisioning as NME metatypes (libNmeSDK.so strings):
+ANDROIDAUTO_MAKE/MODEL/YEAR/ID/ROOT_CERT/CLIENT_CERT/PRIVATE_KEY/
+DRIVERPOSITION. No pulled binary registers the stock 'AndroidAuto' SPP SDP
+name, none calls CinemoCreateProjection => the activator is NBTMediaMainApp
+(/fs/sda0/opt/mm/bin/NBTMediaMainApp, 8.7MB, NOT pulled). eaf_default.cfg
+a4a* entries are Apple iAP protocols (bundleseedID) — not AA.
+Connectivity binary has zero AndroidAuto strings (its SPP work is IAP2/CarPlay).
+
+NEXT-SESSION PULLS: /fs/sda0/opt/mm/bin/NBTMediaMainApp; also grep -rl
+"AndroidAuto" /opt/mm/bin /opt/mm/lib on the HU to find the SPP registrar +
+any AA config file populating the metatypes (the cert/key could be FSC-bound
+=> official AA may be unlockable purely by config/coding, or the certs may be
+provisioned but gated by a coding flag).

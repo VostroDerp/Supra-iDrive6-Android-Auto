@@ -246,3 +246,8 @@ nbt-aad-usb; test browser audio after USB result is known.
 
 (append one line per attempt)
 - pending: everything below is untested on car
+
+Pull tomorrow: NBTMediaMainApp (/fs/sda0/opt/mm/bin/, 8.7MB) + run on HU:
+`grep -rl AndroidAuto /opt/mm/bin /opt/mm/lib` (find stock SPP registrar +
+AA config provider). Offline goal: find the metatype provisioning path +
+coding gate for the dormant official AA engine (see id5.md Cinemo section).
