@@ -34,6 +34,29 @@ missing). It starts knockd itself (option b of IMPROVEMENT-PLAN A1, the interim 
       works with no fallback, plug in -> AA. Daemon log: `/var/opt/aa/nbt.log`.
 - [ ] Back out: the install line with `/var/opt/aa/nbt-aad.wrapper.v1` (over the fallback if knock is gone).
 
+### W1. Wireless over the car's Wi-Fi Direct group (MUST after N1, ~25 min, no reboot)
+Upstream main v1.8.80 (b0ad23d) added `NBT_ALT_WIFI`: Wi-Fi Direct instead of the CarPlay hotspot, car-verified on a
+J29, including cars with no CarPlay config. Built 2026-11-03: `$U/nbt-aad-usb9-main-wfd` (598363 B) and
+`$U/wfd_probe-main` (41222 B, upstream's read-only diagnostic); host tests alt_wifi, session_owner, usb_accessory pass.
+What we already know: wfd0 is up at boot at 172.16.222.1 with stock mwud (recon 2026-11-03); the group SSID is
+`DIRECT-03-BMW<5 digits> (real name in id5/local/wifi-ids.txt)` (Devin's captures); `WFDPass.conf` (pulled 2 Nov) decodes with upstream's key to a valid WPA2
+passphrase. Never write the decoded value into the repo. Devin's "WFD GO unusable for AA" (findings.md) was the
+encrypted passphrase plus a listener bound to 172.16.224.1; upstream fixed both.
+- [ ] Push: `$C push $U/nbt-aad-usb9-main-wfd /var/opt/aa/nbt-aad-usb9`, `$C push $U/wfd_probe-main /var/opt/aa/wfd_probe`.
+- [ ] Read-only: `$C sh /var/opt/aa/wfd_probe > id5/local/recon/wfd-probe-<date>.txt`. Expect the wfd0 address, the
+      passphrase decoded OK and the SSID from mwud. Also, from the phone's Wi-Fi list: is `DIRECT-03-BMW<5 digits> (real name in id5/local/wifi-ids.txt)` visible
+      now (always on), or only while iDrive's screen-mirroring pairing is open (Devin saw that once)?
+- [ ] Phone: Bluetooth connected to the car (the Wi-Fi offer goes over Bluetooth), Wi-Fi on, **USB unplugged**. mm-renderer
+      running (N1's wrapper starts it; usb9 is main without #65).
+- [ ] Run, wireless only (one variable vs run 14: transport): `$C run <N> nbt-aad-usb9 NBT_USB=0 NBT_ALT_WIFI=DIRECT NBT_VEHICLE=bmw`
+      (a later `K=V` overrides car.sh's `NBT_USB=1`; ignore its "plug the phone in" line). Watch: the phone joins the
+      DIRECT group, `[Wireless]` offers it, TcpServer accepts on 172.16.222.1:5277, TLS, video.
+- [ ] Works -> next run with both (`NBT_USB=1`, default `NBT_ALT_WIFI`) and check upstream's owner rules: plugging in during
+      a wireless session leaves it alone (USB waits), and wireless never takes over a USB session. Then N1's wrapper moves
+      to usb9 with both on: a separate change, with its own reboot check.
+- [ ] Fails: phone never joins -> wfd_probe/mwud output, is the group beaconing, Miracast coding. Joins but no TCP -> the
+      listener address in the log (tcp_server bind line).
+
 ### N2. NbtService (B6 as written, one reboot; then B7)
 Install location: `/var/opt/hmi/data/ID5/Plugins/NbtService` (B6's `mkdir -p` creates `Plugins/`). Upstream's
 readme says HmiMain3D loads `Plugins/<Name>/<Name>.manifest` from `/var/opt/hmi/data/ID5` as well as
@@ -68,6 +91,9 @@ Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-b
 - Firmware/I-level string: no version file found (only `/etc/gps_G6_V7_ver20.cfg`). USER: photo of iDrive's
   software version screen.
 - Not done: B4–B9d (B9c boot-hook and B9d cluster-arrow recon included).
+- The Wi-Fi Direct passphrase's encrypted form is in the public fork history (0bac749, findings.md) and now decodes
+  with upstream's public key. Low risk (pf passes only Miracast ports and DHCP on wfd0). Owner to decide: history
+  rewrite, and/or check in the car whether a new screen-mirroring pairing makes a new passphrase.
 
 ## Car session 2026-11-03 (evening) — DONE. Results first, then the checklist as worked.
 
