@@ -9,17 +9,18 @@
 #   car.sh knock                    knock (only if :3804 is not already open)
 #   car.sh sh '<remote cmd>'        run a command on hu-omap (QNX ksh: no head/env/nc/scp)
 #   car.sh push <local> <remote>    copy a file to the HU (size-checked; +x kept)
-#   car.sh pull <remote> [local]    copy a file from the HU (default: recon/<basename>)
+#   car.sh pull <remote> [local]    copy a file from the HU (default: id5/local/recon/<basename>)
 #   car.sh login                    interactive shell
 #   car.sh status                   is the HU reachable, is knockd / sshd answering
-#   car.sh collect <N>              after test run N: recon/run-N/ gets the daemon logs (nbt-usbN*.log),
+#   car.sh collect <N>              after test run N: id5/local/recon/run-N/ gets the daemon logs (nbt-usbN*.log),
 #                                   pidin / fds / dev nodes / sloginfo, binary sizes, phone logcat (if adb
 #                                   sees a device), then prints the stage summary
 #   car.sh stages <log>             stage summary of a daemon log (how far a USB session got)
 #
 # sh/push/pull/login knock first when :3804 is closed.
 # Env: HU_IP (169.254.199.119), SSH_PORT (3804), KNOCK_PORT (851), KNOCK_PPK (~/.ssh/nbt_knock.ppk),
-#      KNOCK_KEY (~/.ssh/nbt_knock.pem, used by knock.py), PLINK (plink).
+#      KNOCK_KEY (~/.ssh/nbt_knock.pem, used by knock.py), PLINK (plink), ID5_LOCAL (id5/local),
+#      USB_TREE (the -usb worktree, for build sizes in collect).
 set -u
 
 HU_IP=${HU_IP:-169.254.199.119}
@@ -28,6 +29,8 @@ KNOCK_PORT=${KNOCK_PORT:-851}
 PPK=${KNOCK_PPK:-$HOME/.ssh/nbt_knock.ppk}
 PLINK=${PLINK:-plink}
 HERE="$(cd "$(dirname "$0")" && pwd)"
+ID5="$(cd "$HERE/../.." && pwd)"                 # id5/ (repo root/id5)
+LOCAL=${ID5_LOCAL:-$ID5/local}                     # gitignored: recon output, pulls
 
 die() { echo "car.sh: $*" >&2; exit 1; }
 port_open() { timeout 3 bash -c ": </dev/tcp/$HU_IP/$1" 2>/dev/null; }
@@ -37,7 +40,7 @@ knock() {
     port_open "$SSH_PORT" && return 0
     port_open "$KNOCK_PORT" || die "neither sshd :$SSH_PORT nor knockd :$KNOCK_PORT answers on $HU_IP" \
         "(ENET cable / laptop on 169.254.x? HU awake? knockd started by the boot wrapper?)"
-    python3 "$HERE/knock/knock.py" "$HU_IP" "$KNOCK_PORT" || die "knock failed"
+    python3 "$ID5/tools/knock/knock.py" "$HU_IP" "$KNOCK_PORT" || die "knock failed"
     for _ in 1 2 3 4 5 6 7 8 9 10; do
         port_open "$SSH_PORT" && return 0
         sleep 1
@@ -100,7 +103,7 @@ case "$cmd" in
         ;;
     pull)
         [ $# -ge 1 ] && [ $# -le 2 ] || die "usage: car.sh pull <remote> [local]"
-        dst=${2:-$HERE/recon/$(basename "$1")}
+        dst=${2:-$LOCAL/recon/$(basename "$1")}
         mkdir -p "$(dirname "$dst")"
         knock || exit 1
         want=$(remote_size "$1")
@@ -113,7 +116,7 @@ case "$cmd" in
         ;;
     collect)
         [ $# -eq 1 ] || die "usage: car.sh collect <run number>"
-        N=$1; out=$HERE/recon/run-$N
+        N=$1; out=$LOCAL/recon/run-$N
         [ -e "$out" ] && die "$out exists (pick a new run number)"
         mkdir -p "$out"; knock || exit 1
         {
@@ -122,7 +125,7 @@ case "$cmd" in
             echo "--- HU binaries (match sizes to the local builds below)"
             run 'ls -l /var/opt/aa/nbt-aad*' 2>&1
             echo "--- local builds"
-            ls -l "${USB_TREE:-$HERE/../../../Supra-iDrive6-Android-Auto-usb}"/milestone-7/nbt-aad-usb* 2>/dev/null
+            ls -l "${USB_TREE:-$ID5/../../Supra-iDrive6-Android-Auto-usb}"/milestone-7/nbt-aad-usb* 2>/dev/null
         } > "$out/meta.txt"
         for f in nbt-usb$N.log nbt-usb$N-stdout.log; do
             if [ -n "$(remote_size "/var/opt/aa/$f")" ]; then

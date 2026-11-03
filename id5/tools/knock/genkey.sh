@@ -34,8 +34,8 @@ Done.
   private key : $KEY        — store in your password manager; NEVER paste it
   public key  : $KEY.pub.pem — push to the HU as /var/opt/aa/knock.pub
 
-On the car (via hu.sh):
-  hu.sh push $KEY.pub.pem /var/opt/aa/knock.pub
+On the car (via car.sh; the first install needs the stock unlock + hu.sh):
+  id5/tools/car/car.sh push $KEY.pub.pem /var/opt/aa/knock.pub
 
 Then knock:
   knock.py <hu-ip>

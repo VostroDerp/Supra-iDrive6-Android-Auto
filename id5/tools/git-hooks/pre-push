@@ -1,0 +1,86 @@
+#!/bin/bash
+# pre-push guard for the ID5 fork. Install with id5/tools/git-hooks/install.sh: it copies this file to
+# .git/hooks/pre-push. A copy, not a symlink, so the guard keeps working whichever branch a worktree has out.
+#
+# Refuses a push when it would publish:
+#   1. anything on `main` that is not already in upstream/main (fork main is a clean mirror);
+#   2. session artifacts or big binaries that upstream does not ship (by path / size);
+#   3. personal identifiers in our own commits (added lines and commit messages):
+#      - generic patterns: MAC addresses, BMW Bluetooth names (BMW + 5 VIN digits), Wi-Fi Direct group names,
+#        VINs, private keys;
+#      - exact strings from the local, untracked denylist $(git rev-parse --git-common-dir)/info/push-denylist
+#        (one per line, case-insensitive). The real identifiers live there, never in this public file.
+# Placeholders that look like identifiers are listed in ALLOW below.
+# Commits already in upstream/main are never checked (mirror syncs must pass).
+# Bypass for a one-off false positive: fix the content. There is deliberately no bypass flag (git push --no-verify
+# exists, and is the explicit, visible escape hatch).
+
+set -u
+FORBIDDEN_PATH='(^|/)(local|pulled|captures|backups)/|recon[0-9]|nbt-unlock-|mgrecon|FUTURE\.md|\.so($|\.)|\.zip$|\.bin$|\.7z$|\.iso$|\.log$|\.pcap$|\.bundle$'
+MAX_KB=200
+PATTERNS=(
+    '\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b'               # MAC / BSSID
+    '\bBMW ?[0-9]{5}\b'                                      # BMW Bluetooth name = last 5 VIN digits
+    'DIRECT-[A-Za-z0-9]{2}-BMW ?[0-9]'                       # car's Wi-Fi Direct group name
+    '\b(WBA|WBS|WBX|WBY|WMW|5UX|5UM|5YM|4US|JTN)[A-HJ-NPR-Z0-9]{14}\b'   # VIN (BMW/MINI/Toyota WMIs)
+    '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+)
+# Known placeholders (case-insensitive, exact match of the hit).
+ALLOW='^(02:00:00:12:34:56|AA:BB:CC:DD:EE:FF|00:00:00:00:00:00|FF:FF:FF:FF:FF:FF|WBADT43452G123456)$'
+DENYLIST="$(git rev-parse --git-common-dir)/info/push-denylist"
+ZERO=0000000000000000000000000000000000000000
+fail=0
+block() { echo "PUSH BLOCKED: $*" >&2; fail=1; }
+
+git rev-parse -q --verify upstream/main >/dev/null || { block "no upstream/main ref: git fetch upstream first"; exit 1; }
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$ZERO" ] && continue                       # branch deletion
+
+    if [ "$remote_ref" = "refs/heads/main" ] && ! git merge-base --is-ancestor "$local_sha" upstream/main; then
+        block "main must stay a clean mirror of upstream/main ($local_ref has commits upstream does not)"
+        continue
+    fi
+
+    # Our own commits in this push: new on the remote and not in upstream.
+    if [ "$remote_sha" = "$ZERO" ] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+        commits=$(git rev-list "$local_sha" --not upstream/main --remotes)
+    else
+        commits=$(git rev-list "$remote_sha..$local_sha" --not upstream/main)
+    fi
+    [ -z "$commits" ] && continue
+
+    # 1+2: paths and sizes of files these commits touch (files upstream ships are fine).
+    files=$(for c in $commits; do git diff-tree --no-commit-id --name-only -r --root "$c"; done | sort -u)
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        git cat-file -e "upstream/main:$f" 2>/dev/null && continue
+        echo "$f" | grep -qE "$FORBIDDEN_PATH" && { block "forbidden artifact path: $f"; continue; }
+        if git cat-file -e "$local_sha:$f" 2>/dev/null; then
+            sz=$(git cat-file -s "$local_sha:$f")
+            [ "$sz" -gt $((MAX_KB * 1024)) ] && block "$f is $((sz / 1024)) KB (> $MAX_KB KB) and not in upstream"
+        fi
+    done <<< "$files"
+
+    # 3: identifiers in added lines and commit messages.
+    text=$(for c in $commits; do
+               git log -1 --format='%B' "$c" | sed "s|^|$c msg: |"
+               git show --format= --unified=0 --no-color "$c" | grep '^+' | grep -v '^+++' | sed "s|^|$c +: |"
+           done)
+    for p in "${PATTERNS[@]}"; do
+        hits=$(printf '%s\n' "$text" | grep -oiE -- "$p" | sort -u | grep -viE "$ALLOW")
+        [ -n "$hits" ] && block "identifier-like text (pattern $p): $(echo $hits | cut -c1-120)"
+    done
+    if [ -s "$DENYLIST" ]; then
+        while IFS= read -r d; do
+            [ -z "$d" ] || [ "${d#\#}" != "$d" ] && continue
+            printf '%s\n' "$text" | grep -qiF -- "$d" && block "denylisted string from $DENYLIST (line not shown)"
+        done < "$DENYLIST"
+    fi
+done
+
+if [ "$fail" = 1 ]; then
+    echo "Nothing was pushed. Clean the commits (amend / rebase) or keep them on a local-only branch." >&2
+    echo "Guard: id5/tools/git-hooks/pre-push" >&2
+fi
+exit $fail

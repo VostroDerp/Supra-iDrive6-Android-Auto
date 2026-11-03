@@ -68,7 +68,7 @@ required"). Test order next wake:
    for WlanMicroApOnOff / ap commands.
 3. **mwud ap_init via SSH tunnel** — PROVEN tooling: stock mwud listens
    127.0.0.1:9096; `plink -L 9096:127.0.0.1:9096 root@<hu>` then
-   `tools/ssh-vetting/mwu.py 127.0.0.1 ap_init iface=uap0 ssid=NBTAA-DIRECT key=1234567890 auth=0020 encrypt=0008`
+   `id5/tools/legacy/mwu.py 127.0.0.1 ap_init iface=uap0 ssid=NBTAA-DIRECT key=1234567890 auth=0020 encrypt=0008`
    + `ap_start iface=uap0`. Wire format: [u32 body_len][u32 seq][k=v\n body].
    Fallback: mwud_pub on HU binds 9196; DS-injection last resort.
 4. QNX SDK DSI tool (Wlan_MicroApCfg.WlanMicroApOnOff) — BUILDABLE NOW (toolchain solved via docker image).
@@ -107,7 +107,7 @@ devc-serusb-aoap, io-usb (omap5-xhci+ehci) running, srm -e /fs/usb0.
 Draft TODOs: buggy unplug/replug, audio-over-USB untested, full flow needs
 first clean car test. NO prebuilt binary (no CI, fork has no releases) —
 SOLVED via licensed docker image (see build-vm.md): BUILT nbt-aad-usb
-(430KB, armv7le, libusbdi NEEDED) staged at tools/ssh-vetting/aa-install/
+(430KB, armv7le, libusbdi NEEDED) staged at id5/tools/hu-install/
 next to libusbdi.so.2 fallback. DEPLOY next wake as /var/opt/aa/nbt-aad-usb
 (KEEP release daemon untouched!) with NBT_USB=1 NBT_USB_DIRECT=1 in a test
 launch — verify USB recon items first, then plug phone.
@@ -116,13 +116,13 @@ plugged; pidin fds|grep -i oap; sloginfo|grep -i aoap. If nodes appear,
 ID5 matches the PR model.
 
 ## Reference (in repo, persisted)
-- `tools/ssh-vetting/aa-install/` = exact deployed wrapper+env+plugin files.
-- `tools/ssh-vetting/captures/session-1102/` = recon-1102.txt (941-line HU
+- `id5/tools/hu-install/` = exact deployed wrapper+env+plugin files.
+- `id5/local/captures/session-1102/` = recon-1102.txt (941-line HU
   dump: ifconfig -a, /dev, netstat, pidin, conn/sys/mm bin listings, iap cfgs,
   uap0-grep), nbt-session.log (9.4MB), mmr/mwud/wfd logs.
-- `id5.md` = deep technical notes: mwud wire format §10, coexistence §9,
+- `findings.md` = deep technical notes: mwud wire format §10, coexistence §9,
   AP bring-up chain (WIFI_steuernActivation->WifiAPCodingValue->NWS_IEEE80211).
-- `tools/ssh-vetting/hu.sh sh|push|pull` (run FROM tools/ssh-vetting dir!).
+- `id5/tools/legacy/hu.sh sh|push|pull` (run FROM id5/tools/ dir!).
   plink only; root/`ts&SK412`; HU ip usually .11 on BM3 net.
 - Watch item: phantom BMW-service call once — likely hardkey->iDrive during
   a session-drop window; not reproduced. Session drops = "Phone closed

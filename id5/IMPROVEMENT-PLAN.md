@@ -65,7 +65,7 @@ Decision (approved): an **allowlist** in knock.conf, `ALLOW_NETS=169.254.0.0/16,
   link-local vs the dongle's DHCP range), so allow `169.254.0.0/16` only, never the
   dongle subnet.
 
-pf already shapes this (id5.md §11): the default is `block drop all`; dwc0 passes the
+pf already shapes this (findings.md §11): the default is `block drop all`; dwc0 passes the
 stock OBD/diag rule (knock on :851 works); uap0 passes UDP 49512–65535, DNS/mDNS and the
 CarPlay ports to AP clients. So **TCP 851/3804 over uap0 also needs a pf anchor rule**
 (the `filter_*` anchors can be loaded with `pfctl -a`, which is not persistent: knockd would
@@ -111,7 +111,7 @@ sshd itself stays key-only.
 
 ---
 
-## C. knockd.c review findings — ALL APPROVED 2026-11-03 (id5-dev `tools/ssh-vetting/knock/knockd.c`)
+## C. knockd.c review findings — ALL APPROVED 2026-11-03 (id5-dev `id5/tools/knock/knockd.c`)
 
 Sound: fresh 32-byte nonce from `/dev/urandom`, `RSA_verify` with SHA-256 and e=65537,
 fail-safe exits when the config or key is missing, SIGPIPE ignored, daemonises after bind
@@ -217,7 +217,7 @@ the follow-up list as a precaution.
   fixed set of actions (status, restart AA, fetch logs), not a root shell.
 - Check that the HU's OpenSSH version supports these options (`sshd -V` / `ssh -V`).
 
-### F3. (was A7) sshd_config clean-up (current file: `tools/ssh-vetting/aa-install/sshd_config`)
+### F3. (was A7) sshd_config clean-up (current file: `id5/tools/hu-install/sshd_config`)
 None of these options has a comment or note saying why it was set.
 
 | Option | Now | What it does | Probable reason it's set | Plan |
@@ -269,7 +269,7 @@ breaks.
 - P2 Public fork hygiene: the BT MAC `<car-bt-mac>` and "BMW nnnnn" are in pushed id5-dev
   files. Decide whether to scrub (history rewrite) or accept.
 - P3 Move the recon-*.sh scripts from hu.sh to car.sh; retire hu.sh to fallback-only docs.
-- P3 Split id5.md into a short current-state page and a dated log. Several notes there were
+- P3 Split findings.md into a short current-state page and a dated log. Several notes there were
   wrong and later corrected in place.
 - P3 Drop or archive the dead-end tools (mwu-gdb / pdebug / inject, the mitm relays) once
   the wireless work has decided whether it needs them.

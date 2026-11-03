@@ -236,13 +236,13 @@ Why each line exists — all three were real boot failures we hit:
 Everything above works because the *dongle* provides the AP. The car's own
 radio can too — `uap0` exists at `172.16.224.1` with DHCP/pf/driver staged;
 only the beacon is off. That's the remaining problem upstream solves with
-CarPlay. Ranked options under test (details in `id5.md` + `.remember/`):
+CarPlay. Ranked options under test (details in `findings.md` + `archive/devin-remember.md`):
 
 1. `acpd` (stock Apple daemon) self-launch — may light `uap0` + write real
    `iap2.cfg` before the FSC license check gates anything.
 2. `WlanDSICommander` — stock DSI Wi-Fi control binary.
 3. `mwud` `ap_init`/`ap_start` on `uap0` — wire format already decoded
-   (`tools/ssh-vetting/mwu.py`), reachable via SSH-local `9096` tunnel.
+   (`id5/tools/legacy/mwu.py`), reachable via SSH-local `9096` tunnel.
 4. Small QNX SDP tool calling `Wlan_MicroApCfg.WlanMicroApOnOff` via DSI.
 
 Also tracked: known radio constraint — the single radio multiplexes
@@ -256,23 +256,23 @@ middleware ships on the NBT Evo (`/opt/mm/bin/Cinemo`, `NmeCmdLine`
 confirmed present on our iDrive 5 firmware). If a dormant-but-complete AA
 engine exists there, it could offer a more native path — including *wired*
 USB projection, which sidesteps the AP problem entirely. Pull list +
-analysis plan in `.remember/remember.md`.
+analysis plan in `archive/devin-remember.md`.
 
 **USB transport — upstream PR #42 (draft):** adds `NBT_USB=1`/`NBT_USB_DIRECT=1`
 driving the stock AOAP plumbing our ID5 already ships (`aoap-switch`,
 `devc-serusb-aoap` → `/dev/oap*`, `io-usb` running). USB + wireless arbitrate
 one session; cable wins. Needs a QNX SDP build (no prebuilt binary) and is
 still rough (unplug/replug, audio untested) — but if the `/dev/android*`/
-`/dev/oap*` nodes appear on plug on ID5 (recon in `.remember`), it's a
+`/dev/oap*` nodes appear on plug on ID5 (recon in `archive/devin-remember.md`), it's a
 credible daily-driver path that needs no AP at all and charges the phone.
 Branch fetched locally as `usb-pr42`.
 
 ## 6. Files in this repo for this method
 
-- `tools/ssh-vetting/aa-install/` — the deployed `nbt-aad.sh` wrapper,
+- `id5/tools/hu-install/` — the deployed `nbt-aad.sh` wrapper,
   `nbt-aad.env`, `plugin/` (5 upstream release files)
-- `tools/ssh-vetting/start-aa.sh` — manual bring-up (same logic as wrapper)
-- `tools/ssh-vetting/hu.sh` — plink-based HU access (push/pull/sh)
-- `tools/ssh-vetting/captures/session-1102/` — full recon + session logs
-- `id5.md` — deep technical notes (mwud protocol, AP research, DSI calls)
-- `.remember/remember.md` — session-to-session handoff
+- `id5/tools/car/start-aa.sh` — manual bring-up (same logic as wrapper)
+- `id5/tools/legacy/hu.sh` — plink-based HU access (push/pull/sh)
+- `id5/local/captures/session-1102/` — full recon + session logs
+- `findings.md` — deep technical notes (mwud protocol, AP research, DSI calls)
+- `archive/devin-remember.md` — session-to-session handoff

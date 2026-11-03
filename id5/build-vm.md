@@ -57,7 +57,7 @@ No myQNX needed after all. Working toolchain = licensed prebuilt image:
   `-silent -options` response file in `~/vms/qnx/install.opts`). qcc needs
   `/etc/qnx/license/licenses` (root path, no sudo) so prefer the image;
   extracted license cached at `~/vms/qnx/license/licenses` for later.
-- armv7 `libusbdi.so.2` copied to `tools/ssh-vetting/aa-install/` —
+- armv7 `libusbdi.so.2` copied to `id5/tools/hu-install/` —
   deploy alongside usb builds if HU lacks it.
 - myQNX account still pending — no longer blocking anything.
 - VM note: `qnx-build` has NO outbound internet (host NAT masquerade lost;

@@ -11,7 +11,7 @@ differences:
      the three steps of the observed debug-gate unlock. Anything else the
      server sends is refused before it reaches the car.
 
-Protocol documentation: tools/ssh-vetting/README.md
+Protocol documentation: id5/tools/README.md
 
 Usage:
   nbt-ssh-unlock.py <car-ip>                      # real unlock via pretzel relay

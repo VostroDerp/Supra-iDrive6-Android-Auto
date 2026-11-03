@@ -37,7 +37,7 @@ The daemon consumes CarPlay *infrastructure*, never the CarPlay *license*:
 | Menu row (Stage B) | `/opt/hmi/ID5/data/ro/Plugins/` + A4A/REMOTE coding | plugin dir exists; coding TBD |
 
 **Primary path — drive the pairing directly** (no FSC). Recon + pulled-binary
-analysis (Connectivity/mwud/WlanDSICommander in `tools/ssh-vetting/pulled/`):
+analysis (Connectivity/mwud/WlanDSICommander in `id5/local/pulled/`):
 
 - Live `iap2.cfg`: **absent everywhere** (Connectivity never wrote one —
   CarPlay never ran). Factory templates exist at
@@ -76,10 +76,10 @@ free, no FSC); after activation verify `iap2.cfg` appears + SSID broadcast.
 | post 18-03 | **bavarian-ssh-client / nbt-ssh-unlock.py** | debug-gate routines, non-persistent (until reboot); needs internet for the signing relay |
 | post 18-03 | TurboCode unlocker | paid alternative doing the same class of unlock |
 
-Our path: `tools/ssh-vetting/nbt-ssh-unlock.py` — zero-dep Python client, only
+Our path: `id5/tools/legacy/nbt-ssh-unlock.py` — zero-dep Python client, only
 ever sends the three allowlisted debug-gate routines (`FD2E`/`FD2F`/`FDAC`)
 to ECU `0x63`. Equivalent: upstream `bavarian-ssh-client` GUI pointed through
-`mitm_relay.py` for live frame inspection. See `tools/ssh-vetting/README.md`.
+`mitm_relay.py` for live frame inspection. See `id5/tools/README.md`.
 
 ## 1. Network layout
 
@@ -107,9 +107,9 @@ to ECU `0x63`. Equivalent: upstream `bavarian-ssh-client` GUI pointed through
 
 ```
 # optional: observe the challenge randomness once (read-only, no server)
-python3 tools/ssh-vetting/nbt-ssh-unlock.py 169.254.199.99 --probe
+python3 id5/tools/legacy/nbt-ssh-unlock.py 169.254.199.99 --probe
 
-python3 tools/ssh-vetting/nbt-ssh-unlock.py 169.254.199.99
+python3 id5/tools/legacy/nbt-ssh-unlock.py 169.254.199.99
 # expected: "Gate: open" -> "Enabling SSH..." -> "SSH: enabled"
 ssh root@169.254.199.99 -o HostKeyAlgorithms=+ssh-rsa -m hmac-sha1   # ts&SK412
 ```
@@ -261,7 +261,7 @@ negotiated — likely just "Media audio" toggle in phone BT settings).
 - **Boot persistence**: launch script for mm-renderer+daemon; survives sleeps
   already, needs boot hooks later.
 
-## Access recipe (VERIFIED — use `tools/ssh-vetting/hu.sh`, don't re-derive)
+## Access recipe (VERIFIED — use `id5/tools/legacy/hu.sh`, don't re-derive)
 
 - **`hu.sh sh '<cmd>'` / `hu.sh push/pull` / `hu.sh scan` / `hu.sh unlock`** —
   auto-scans nodes, unlocks if needed, runs on hu-omap.
@@ -381,7 +381,7 @@ negotiated — likely just "Media audio" toggle in phone BT settings).
   packet → mwud routes by `module=` → ap_init on uap0.
 - GOT slots (wifidir_app, non-PIE): writev=`0x126708`, malloc=`0x126630`,
   read=`0x126674`, free=`0x126758`. Resolve at runtime: `x/wx <slot>`.
-- Ready: `tools/ssh-vetting/mwu-inject.py <pid> <fd> kv...` emits the gdb
+- Ready: `id5/tools/legacy/mwu-inject.py <pid> <fd> kv...` emits the gdb
   script. Steps: relaunch wifidir_app_p97 (fd→9196, stalls at role check —
   harmless), `pdebug 8001 &`, find fd via `sockstat|grep wifidir_app`,
   run generated gdb script → watch mwud_pub.log for "Started AP".
@@ -423,14 +423,14 @@ reversible, relaunch `/opt/conn/bin/lighttpd -f /opt/conn/etc/lighttpd-nbt.conf
 -m /opt/conn/lib` after.
 
 ARM regset = 68B (r0..r15,cpsr; r[13]=sp r[14]=lr r[15]=pc).
-Injection recipe (tools/ssh-vetting/mwu-pdebug.py): attach mwud_pub →
+Injection recipe (id5/tools/legacy/mwu-pdebug.py): attach mwud_pub →
 stop → memwr pkt+sa into .bss (0x195768+0x800) → exec-brk at main 0x104024
 → regwr r0=fd r1=pkt r2=len r3=0 sp-=32 [sp]=sa_ptr [sp+4]=16 lr=bkpt
 pc=0x12b090 → run → bp hit → regrd (r0=ret) → restore regs → run → detach.
 Send-fd = mwud_pub's ephemeral UDP socket (pidin -p PID fds) — reply then
 goes to a dead port; fd4 (the *.9196 listener) also works but loops the reply.
 
-Orchestrator: tools/ssh-vetting/wake-uap.sh — whole bring-up in one shot.
+Orchestrator: id5/tools/recon/wake-uap.sh — whole bring-up in one shot.
 
 ## 13. USB AA attempt #1 (2026-11-02, nbt-aad-usb / PR#42) — phone never streams
 

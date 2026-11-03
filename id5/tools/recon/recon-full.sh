@@ -1,13 +1,13 @@
 #!/bin/bash
 # recon-full.sh — full HU state dump for offline analysis, via OUR ssh gate
 # (knockd -> sshd:3804, key-only). No bavarian/unlock involvement.
-# Output: tools/ssh-vetting/recon/recon-<date>.txt (gitignored).
-cd "$(dirname "$0")" || exit 1
-HU=${HU_IP:-169.254.199.119}
-OUT=recon/recon-$(date +%Y%m%d-%H%M).txt
-mkdir -p recon
-SSH="plink -ssh -batch -i $HOME/.ssh/nbt_knock.ppk -P 3804 root@$HU"
-r() { echo "===== $*"; $SSH "$*" 2>&1 | sed -n '1,60p'; echo; }
+# Output: id5/local/recon/recon-<date>.txt (gitignored).
+HERE="$(cd "$(dirname "$0")" && pwd)"
+CAR="$HERE/../car/car.sh"
+OUT="$HERE/../../local/recon/recon-$(date +%Y%m%d-%H%M).txt"
+mkdir -p "$(dirname "$OUT")"
+"$CAR" knock >/dev/null || exit 1
+r() { echo "===== $*"; "$CAR" sh "$*" 2>&1 | sed -n '1,60p'; echo; }
 {
 echo "##### recon-full $(date) via our knockd gate #####"; echo
 r 'hostname; uname -a'

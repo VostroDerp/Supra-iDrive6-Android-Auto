@@ -9,7 +9,7 @@ don't stack another tweak. Note: usb11/usb12 never ran direct mode (no
 (direct + driver claim) has NOT been car-tested on the ID5 yet; run 13 is its first.
 
 Shorthands:
-`C=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto/tools/ssh-vetting/car.sh`
+`C=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto/id5/tools/car/car.sh`
 `U=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb/milestone-7`
 
 ### 0a. Pre-flight (laptop, before going to the car)
@@ -38,7 +38,7 @@ Shorthands:
    `$C sh 'ls -l /opt/conn/bin/carplay/mm-renderer /opt/conn/etc/carplay/mm-renderer.conf /opt/conn/etc/carplay/mm-playlist.conf; ls -ld /opt/conn/lib/carplay/mm /var/opt/conn/carplay/carplay.ini /fs/sda1/opt/conn/carplay/carplay.ini; pidin ar | grep mm-renderer'`
    #65 spawns the FACTORY renderer (/opt/conn paths, factory conf with playlist engine) and
    treats "no carplay.ini" as "CarPlay not coded". Our wrapper instead runs
-   /fs/sda0/opt/conn/... with our trimmed $AA/mm-renderer.conf (id5.md: the factory playlist
+   /fs/sda0/opt/conn/... with our trimmed $AA/mm-renderer.conf (findings.md: the factory playlist
    engine wanted RO /etc/mm). If carplay.ini EXISTS here, #65 waits until 90 s uptime first.
 
 ### 0c. Per run (N = 13, 14, ...)
@@ -115,7 +115,7 @@ and the /var plugin dir exists.
   boot also skips the wrapper's knockd + mm-renderer: knock will not answer
   (menu Start or bavarian unlock), mm-renderer must be started by hand (start-aa.sh step 1).
 
-Root cause (id5.md §13): stock OAPReaderThread steals /dev/oap transfers; TLS
+Root cause (findings.md §13): stock OAPReaderThread steals /dev/oap transfers; TLS
 implicit seq -> 1 lost record = bad-record-mac forever. Direct mode + claim is the fix.
 
 ## 1. [x] SSH-independence — DONE 2026-11-02 via knockd (1a); 1b/1c optional, kept for reference
@@ -203,7 +203,7 @@ hu.sh sh 'pidin arg | grep -i "hsfz\|diag\|6801"'
       dropbear/sshd build — toolchain available
 - [ ] risk window recorded: until this lands, a dead server = locked out
 
-## 2. [~] USB AA (PR #42) — attempted 2026-11-02; BLOCKED phone-side (see id5.md §13)
+## 2. [~] USB AA (PR #42) — attempted 2026-11-02; BLOCKED phone-side (see findings.md §13)
 
 Pre-recon — DONE:
 - [x] `/dev/android*` appears when phone plugs in (vdev-medialaunch auto-fires aoap-switch -t)
@@ -215,11 +215,11 @@ Pre-recon — DONE:
 
 Deploy + test:
 ```
-hu.sh push aa-install/nbt-aad-usb /var/opt/aa/nbt-aad-usb
+hu.sh push hu-install/nbt-aad-usb /var/opt/aa/nbt-aad-usb
 hu.sh sh 'chmod +x /var/opt/aa/nbt-aad-usb'
 # check libusbdi exists or push fallback:
 hu.sh sh 'ls /lib/libusbdi* /usr/lib/libusbdi* /opt/mm/lib/libusbdi* 2>/dev/null'
-# (if absent: hu.sh push aa-install/libusbdi.so.2 /var/opt/aa/libusbdi.so.2
+# (if absent: hu.sh push hu-install/libusbdi.so.2 /var/opt/aa/libusbdi.so.2
 #  and add /var/opt/aa to LD_LIBRARY_PATH in the launch)
 hu.sh sh 'cd /var/opt/aa && unset LD_PRELOAD; NBT_USB=1 NBT_USB_DIRECT=1 \
   NBT_VERBOSE=1 NBT_LOG_FILE=/var/opt/aa/nbt-usb.log \
@@ -244,7 +244,7 @@ NEXT LEVER: phone-side logcat (tag CAR.SERVICE) via WiFi-ADB at home —
 car USB can't host adb in accessory mode. PR notes: experimental, buggy
 reconnect, only ever tested NBT_USB_DIRECT=1.
 
-## 3. [~] Official AA leftovers recon (Cinemo/NmeSDK) — done 2026-11-02, see id5.md §14
+## 3. [~] Official AA leftovers recon (Cinemo/NmeSDK) — done 2026-11-02, see findings.md §14
 
 ```
 hu.sh sh 'ls -l /fs/sda0/opt/mm/lib/ | grep -i "nme\|cinemo\|auto"'
@@ -307,7 +307,7 @@ active WFD session steals it.
 
 ## 6. [ ] Optional upgrade: `nbt-aad-main` (latest upstream, self-built)
 
-`aa-install/nbt-aad-main` = upstream main @ dc4adba (built locally): adds
+`hu-install/nbt-aad-main` = upstream main @ dc4adba (built locally): adds
 `NBT_AUDIO_MODE=browser` (daemon mixes AA's 3 native channels → car browser
 source; ducking + call-priority + no BT-source dependency) AND kombi_nav
 (HUD/cluster turn arrows + lane guidance). Deploy as separate binary like
@@ -320,7 +320,7 @@ nbt-aad-usb; test browser audio after USB result is known.
 - [ ] Car-sleep kills OBD dongle mid-drive — inherent; uAP/USB fixes by design.
 - [ ] If USB works end-to-end: autostart wrapper variant for USB mode
       (env flags; skip the dwc0 wait-loop — no IP needed).
-- [ ] Repo contribution candidate: id5-adapter-method.md already written;
+- [ ] Repo contribution candidate: adapter-method.md already written;
       +USB results → upstream PR discussion.
 
 ## Status log
@@ -331,4 +331,4 @@ nbt-aad-usb; test browser audio after USB result is known.
 Pull tomorrow: NBTMediaMainApp (/fs/sda0/opt/mm/bin/, 8.7MB) + run on HU:
 `grep -rl AndroidAuto /opt/mm/bin /opt/mm/lib` (find stock SPP registrar +
 AA config provider). Offline goal: find the metatype provisioning path +
-coding gate for the dormant official AA engine (see id5.md Cinemo section).
+coding gate for the dormant official AA engine (see findings.md Cinemo section).

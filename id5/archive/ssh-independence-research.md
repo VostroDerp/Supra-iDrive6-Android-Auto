@@ -14,7 +14,7 @@ no replay possible. Signature is raw high-entropy RSA output, no structure.
 
 ## Path A — persistent SYS_DEBUG / OPT_DEBUG flag (BEST for this car)
 
-The HU startup config (`tools/ssh-vetting/pulled/starter.cfg`) already
+The HU startup config (`id5/local/pulled/starter.cfg`) already
 contains `<Name>OPT_DEBUG</Name>` and `APP_DEBUG` env entries — the flag
 mechanism is stock. When the debug flag is set persistently, SSH is enabled
 at every boot — exactly what the bavarian FDAC routine does, but permanent.

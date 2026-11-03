@@ -1,12 +1,13 @@
 #!/bin/bash
 # recon-knock.sh — one-shot knock-daemon recon for the first car wake.
-# Run from tools/ssh-vetting/ while SSH (bavarian) is up:
+# Uses car.sh (knockd gate); output pulls go to id5/local/pulled/:
 #     ./recon-knock.sh | tee recon-knock-$(date +%m%d).txt
 # Collects everything the knockd deploy needs: firewall posture, dropbear
 # details, alternate access (qconn), USB mount naming, verifier binary.
-cd "$(dirname "$0")" || exit 1
+HERE="$(cd "$(dirname "$0")" && pwd)"
+CAR="$HERE/../car/car.sh"; PULLED="$HERE/../../local/pulled"; mkdir -p "$PULLED"
 
-r() { echo "=== $*"; ./hu.sh sh "$*" 2>&1; echo; }
+r() { echo "=== $*"; "$CAR" sh "$*" 2>&1; echo; }
 
 echo "##### knockd recon $(date) #####"; echo
 r 'ifconfig -a | grep -A3 "dwc0\|uap0"'
@@ -27,6 +28,6 @@ r 'ls /var/opt/sys* /fs/sda0/opt/sys/*syset* 2>/dev/null'
 r 'ls -l /var/opt/aa/ 2>/dev/null'          # current deploy state
 
 echo "##### pulling verifier binary #####"
-./hu.sh pull /opt/sys/bin/NbtDiagHuHighApp pulled/NbtDiagHuHighApp 2>&1 || \
-./hu.sh pull /fs/sda0/opt/sys/bin/NbtDiagHuHighApp pulled/NbtDiagHuHighApp 2>&1 || \
+"$CAR" pull /opt/sys/bin/NbtDiagHuHighApp "$PULLED/NbtDiagHuHighApp" 2>&1 || \
+"$CAR" pull /fs/sda0/opt/sys/bin/NbtDiagHuHighApp "$PULLED/NbtDiagHuHighApp" 2>&1 || \
 echo "NbtDiagHuHighApp not at expected path — find it via pidin line above"

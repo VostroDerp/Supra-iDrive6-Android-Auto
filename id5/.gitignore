@@ -1,0 +1,14 @@
+# Local-only material, never committed: recon output, pulled HU files, captures, unlock logs,
+# deploy binaries, personal notes. See id5/README.md.
+/local/
+
+# Build outputs of our tools
+/tools/knock/knockd
+/tools/knock/test_knockd
+/tools/desk-rig/build/
+*.o
+*.d
+
+# Session artifacts, in case a tool is run from inside id5/
+nbt-unlock-*.json
+mgrecon*.json
