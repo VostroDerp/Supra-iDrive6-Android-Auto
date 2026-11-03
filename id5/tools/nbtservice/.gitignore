@@ -1,0 +1,3 @@
+# Build outputs: `make db` regenerates the zips, `make car` the plugin. Deploy copies live in id5/local/deploy/.
+*.zip
+libNbtService.so
