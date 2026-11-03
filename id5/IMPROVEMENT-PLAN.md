@@ -146,7 +146,7 @@ the follow-up list as a precaution.
 ## E. Development speed and repo hygiene (decisions 2026-11-03)
 
 ### E1. Less car time per answer
-- **E1a. Desk test rig — APPROVED, in progress.** `AASession::start(int fd)` takes any socket, and
+- **E1a. Desk test rig — DONE 2026-11-03** (`id5/tools/desk-rig/`; built, not yet run against a phone: needs the udev rule in its README). `AASession::start(int fd)` takes any socket, and
   `aa_session.cpp` / `aa_cryptor.cpp` include no QNX headers. USB is already bridged to a
   socketpair (usb_accessory.hpp). A Linux host program could do the whole chain at the
   desk against the real phone:
