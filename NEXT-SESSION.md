@@ -1,10 +1,47 @@
 # Next car session — ordered checklist
 
-Goal: replace the BM3 dongle. USB is preferred (charges phone); the uAP
-(wireless) path is the fallback ladder. SSH independence is FIRST — it gates all future work; everything
-else proceeds once it is verified. Work items top-down, mark [x] done /
-[f] failed + one line why. All commands assume `tools/ssh-vetting/hu.sh` access
-from that dir; HU usually `192.168.0.11`.
+## 0. [ ] TOMORROW: USB-AA direct-mode test (read first — the whole session is one test)
+
+Overnight = clean stock boot: stock SPP bait re-registered at boot, usb3
+binary persists at /var/opt/aa/nbt-aad-usb3 (kill-bait + NBT_SSL_CIPHERS env +
+NBT_USB_{MANUFACTURER,MODEL,URL} envs). Phone AA data is wiped (clean slate).
+
+SEQUENCE:
+1. knock: `cd tools/ssh-vetting && python3 knock/knock.py 169.254.199.119`
+   (ENET up already? else `HU_IP=169.254.199.119` on hu.sh calls)
+2. SSH: `plink -ssh -i ~/.ssh/nbt_knock.ppk -P 3804 root@169.254.199.119`
+3. Kill leftovers:
+   `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done`
+   `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done`
+4. Launch DIRECT mode (no shared /dev/oap — media app can't steal records):
+```
+AA=/var/opt/aa; CP=/fs/sda0/opt/conn
+NBT_USB=1 NBT_USB_DIRECT=1 NBT_USB_CLAIM_DRIVER=0 NBT_SPP_REREG_S=0 \
+NBT_USB_MANUFACTURER="Android" NBT_USB_MODEL="Android Auto" \
+NBT_USB_URL="https://github.com/Sq00ky/Supra-iDrive6-Android-Auto" \
+NBT_LOG_FILE=$AA/nbt-usb13.log NBT_VERBOSE=1 \
+AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf \
+LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:$CP/lib/carplay:/opt/sys/lib \
+$AA/nbt-aad-usb3 >$AA/nbt-usb13-stdout.log 2>&1 &
+```
+5. Replug phone. WATCH: `grep -nE "TLS record|decrypt|Frame RX|Streaming" $AA/nbt-usb13.log`
+
+SUCCESS = TLS records >6 keep decrypting (ch12/13/14 opens respond),
+video frames arrive ('Streaming Media Frame'), HU screen shows AA.
+FAILURE A (records still drop) = slay NbtMediaMainApp for the test window
+(reversible, reboot restores): `slay NbtMediaMainApp` then re-run step 4-5.
+FAILURE B (0 bytes again) = phone-side: delete 'BMW nnnnn' AA vehicle entry
+AGAIN (it re-caches), force-stop AA app, replug.
+
+DIAGNOSTIC GRAB if it fails: pull nbt-usb13.log + `adb logcat -d -v time >
+~/aa-logcat3.txt` on the phone (WiFi-ADB over hotspot; wireless debugging may
+need re-enabling). Compare record counts both sides.
+
+Root cause banked in id5.md: stock OAPReaderThread steals /dev/oap transfers;
+TLS implicit seq -> 1 lost record = bad-record-mac forever, both directions.
+DIRECT mode is the designed fix (io-usb hands transfers in order, no node).
+
+## 1. [ ] SSH-independence recon (while unlocked — HIGH, gates all future work)
 
 ## 1. [ ] SSH-independence recon (while unlocked — HIGH, gates all future work)
 
