@@ -7,16 +7,18 @@ binary persists at /var/opt/aa/nbt-aad-usb3 (kill-bait + NBT_SSL_CIPHERS env +
 NBT_USB_{MANUFACTURER,MODEL,URL} envs). Phone AA data is wiped (clean slate).
 
 SEQUENCE:
-1. knock: `cd tools/ssh-vetting && python3 knock/knock.py 169.254.199.119`
-   (ENET up already? else `HU_IP=169.254.199.119` on hu.sh calls)
-2. SSH: `plink -ssh -i ~/.ssh/nbt_knock.ppk -P 3804 root@169.254.199.119`
+Access = `tools/ssh-vetting/car.sh` (knock + plink key, auto-knocks when :3804
+is closed; `car.sh` alone prints usage). Below: `C=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto/tools/ssh-vetting/car.sh`
+1. Reach + knock: `$C status` (ping / knockd :851 / sshd :3804), then `$C knock`.
+2. Interactive shell when needed: `$C login`. One-shots: `$C sh '<cmd>'`.
 3. Kill leftovers:
-   `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done`
-   `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done`
-4. Deploy BOTH builds from ~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb:
-   `cat > /var/opt/aa/nbt-aad-usb4` < milestone-7/nbt-aad-usb4-patched  (pr42-id5 @ 6207f6c, rebuilt 2026-11-03 01:02, 557117 B)
-   `cat > /var/opt/aa/nbt-aad-usb5` < milestone-7/nbt-aad-usb5-vanilla (pr42 @ d7ba352, pure upstream PR tip)
-   chmod +x both.
+   `$C sh 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done'`
+   `$C sh 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done'`
+4. Deploy BOTH builds (push size-checks and keeps +x):
+   `U=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb/milestone-7`
+   `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 6207f6c, rebuilt 2026-11-03 01:02, 557117 B)
+   `$C push $U/nbt-aad-usb5-vanilla /var/opt/aa/nbt-aad-usb5`  (pr42 @ d7ba352, pure upstream PR tip, 556253 B)
+   Logs back: `$C pull /var/opt/aa/nbt-usb$N.log` (lands in tools/ssh-vetting/recon/).
    ORDER: try usb5 (vanilla) FIRST — upstream's own flow may suffice now;
    if phone still chases wireless bait, switch to usb4 (kill-bait deregisters
    the 'AndroidAuto' SPP record and never registers it in USB mode).

@@ -6,7 +6,7 @@ SHA256(nonce) with the RSA private key (via `openssl dgst -sign`), sends the
 256-byte signature back. On 'K' the daemon has spawned SSH — connect as usual.
 
 Usage:
-  knock.py <hu-ip> [port]          # port default 46610
+  knock.py <hu-ip> [port]          # port default 851 (knock.conf PORT on the HU)
   KNOCK_KEY=~/path/key.pem knock.py <hu-ip>   # override key path (default ~/.ssh/nbt_knock.pem)
 
 The private key is only ever READ by openssl — it never prints, never leaves

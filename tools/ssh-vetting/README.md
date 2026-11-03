@@ -124,6 +124,12 @@ vetting; adjust paths if reused outside the `bavarian-sandbox` image.
 
 ## knockd — self-owned SSH gate (DEPLOYED + PROVEN 2026-11-02)
 
+**Daily access: `car.sh`** (`status`, `knock`, `sh '<cmd>'`, `push <local> <remote>`,
+`pull <remote> [local]`, `login`). It knocks when sshd :3804 is closed, then uses
+`plink -i ~/.ssh/nbt_knock.ppk -P 3804 root@169.254.199.119`; push/pull check sizes
+with `ls -l` on the HU. `hu.sh` (BM3 network, :22 password, bavarian unlock) is only
+the fallback if knockd is down; `recon-*.sh` still call `hu.sh`.
+
 Alternative to the online unlock: a tiny ARM daemon (`knock/knockd.c`, ~240 lines,
 statically linked) listens on dwc0:851. Laptop client `knock/knock.py` answers a
 fresh 32-byte nonce with an RSA-2048 PKCS#1v1.5/SHA256 signature; valid sig runs
