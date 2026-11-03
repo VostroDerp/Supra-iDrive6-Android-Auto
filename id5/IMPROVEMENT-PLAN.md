@@ -99,15 +99,21 @@ sshd itself stays key-only.
 - Placement is declared by `insertStateID` (parent menu) + `insertAfterFocusID` (row it
   follows) in the plugin XML. NbtAad uses `insertStateID="20"` = Media/Radio. The stock
   plugins' XML on the HU (NEXT-SESSION 0e) shows which other menus accept plugin rows.
-  Options, in order of preference:
-  1. **Settings menu**: a system function, out of passengers' way. Only if a stock
-     plugin proves an ID5 anchor there.
-  2. **My Vehicle / vehicle info** (same condition).
-  3. **Media/Radio, below the Android Auto row**: the anchor is known to work on this car.
-     The fallback.
+  Order **decided 2026-11-03**:
+  1. **Settings menu** (preferred), if a stock plugin proves an ID5 anchor there;
+  2. **My Vehicle / vehicle info** (same condition);
+  3. **Media/Radio, below the Android Auto row**: last resort only. The anchor is known to
+     work on this car.
+  Build with `insertStateID` as a single constant, so the anchor can change after the
+  NEXT-SESSION 0e recon.
   Inside the entry: "SSH (15 min)" checkbox + remaining time; later status, Restart AA,
   Copy logs to USB.
 - Not in upstream's NbtAad app: that would be a local patch we'd have to carry forever.
+
+### A8. P2 — `PermitRootLogin without-password` in OUR sshd_config — APPROVED 2026-11-03
+It applies only to our sshd (`-f /var/opt/aa/sshd_config`, :3804). The stock dropbear on :22
+and the FDAC unlock with the generic password are not affected. It ships with the knockd v2
+sshd_config (A3).
 
 ---
 
@@ -137,10 +143,10 @@ the follow-up list as a precaution.
 
 ---
 
-## E. Proposed 2026-11-03 — awaiting decision
+## E. Development speed and repo hygiene (decisions 2026-11-03)
 
 ### E1. Less car time per answer
-- **E1a. Desk test rig (largest win).** `AASession::start(int fd)` takes any socket, and
+- **E1a. Desk test rig — APPROVED, in progress.** `AASession::start(int fd)` takes any socket, and
   `aa_session.cpp` / `aa_cryptor.cpp` include no QNX headers. USB is already bridged to a
   socketpair (usb_accessory.hpp). A Linux host program could do the whole chain at the
   desk against the real phone:
@@ -151,12 +157,12 @@ the follow-up list as a precaution.
   list? service discovery accepted? video starts? Every ID5 USB failure so far except the
   QNX-only part (driver claim, io-usb, NbtMediaMainApp stealing) was on that list. The same
   program on TCP covers wireless protocol work. A test tool upstream could use too.
-- **E1b. `car.sh run <N> <bin>`.** One command that kills leftovers, clears logcat, launches
+- **E1b. `car.sh run <N> <bin>` — APPROVED, in progress.** One command that kills leftovers, clears logcat, launches
   with the standard env, prints "plug the phone in", waits until a stage is reached or
   60 s pass, then runs `collect N`. Run time goes from about 5 min of pasting to about 1 min.
-- **E1c. Batch each car session.** Prepare the run list with branches in advance (the
+- **E1c. Batch each car session** (practice, no code). Prepare the run list with branches in advance (the
   decision tree already does this). Do the read-only recon (0e) in the same session.
-- **E1d. Test from indoors (to research).** A small Linux box (Pi or old laptop) on the
+- **E1d. Test from indoors — not now** (revisit after E1a/E1b). A small Linux box (Pi or old laptop) on the
   car's ENET, joined to home Wi-Fi when the car is parked at home. car.sh runs on it, and
   the phone in the car uses adb over home Wi-Fi.
   - You only need the car awake on the charger. You don't need to sit in it.
@@ -164,7 +170,7 @@ the follow-up list as a precaution.
   - Open questions: home Wi-Fi reach to the car, and replugging the phone without a hand.
     Test whether `adb shell svc usb resetUsbGadget` is a good enough "replug"; otherwise
     use a switchable USB cable.
-- **E1e. Bench head unit (biggest change, costs money).** A used NBT Evo + display + bench
+- **E1e. Bench head unit — not now** (costs money). A used NBT Evo + display + bench
   harness + 12 V supply, with one paid unlock, then knockd.
   - Covers USB AA, video, Bluetooth and the uAP/Wi-Fi work: everything inside the HU, so
     nearly all of goals 1–3.
@@ -172,30 +178,68 @@ the follow-up list as a precaution.
   - Bench wake-up requirements need research before buying.
 
 ### E2. Repo issues spotted
-- **E2a. P1 Personal identifiers on the public fork** (pushed id5-dev):
+- **E2a. DONE 2026-11-03. Personal identifiers on the public fork:**
   - car BT MAC `<car-bt-mac>`;
   - the car's Wi-Fi Direct SSID `DIRECT-xx-BMWnnnnn` + GO BSSID;
   - "BMW nnnnn": BMW names the HU after the last 5 VIN digits.
-  Low risk, but it is a car identifier. Decide: redact going forward, or rewrite history.
+  History rewritten with git-filter-repo, limited to our commits after the upstream base
+  `dc4adba`, so upstream hashes are kept. Then force-pushed: `b408b13` -> `c5053db`.
+  Backup bundle and the list of old SHAs are in `~/Desktop/Projects/BMW/backups/`.
+  Remaining step for the user: ask GitHub Support to purge the old commits. Until then
+  they can still be fetched by SHA through the fork network.
   The generic root password in the docs is upstream's published one (not ours), so that is
   fine.
-- **E2b. P2 The pre-push guard only checks file names and sizes.** It let the identifiers
+- **E2b. DONE 2026-11-03 (`id5/tools/git-hooks/`). The pre-push guard only checked file names and sizes.** It let the identifiers
   above through. Add content patterns (MAC addresses, `BMW[0-9]{5}`, `DIRECT-..-BMW`,
   PEM private keys).
   Also, the hook is a relative symlink into the main worktree's `tools/`. If that worktree
   checks out `main`, the link dangles and git **silently skips** the guard. Fix: a
   hook that refuses to push if the guard script is missing.
-- **E2c. P2 Upstream contributions with no car needed:**
+- **E2c. DROPPED 2026-11-03: not ours to change without the owner asking.** Upstream contributions with no car needed:
   - a `.gitignore` for build outputs;
   - a host-test runner (`tests/run.sh` or `make check`): 29 tests, each with its own build
     line;
   - GitHub Actions running the host tests.
-  These are small and useful, and a good first PR.
-- **E2d. P3 Staged-binary manifest.** `collect` already tells builds apart by the
+  Reason: upstream deliberately commits some binaries (`tools/test_controls`, the
+  rhmiapp zips), and the owner uploads through the GitHub web UI, so a `.gitignore`
+  could get in their way. Each test documents its own build line, and the readme says
+  WSL is fine, so the test setup works for them as it is. Revisit only if they ask.
+  The first upstream contribution is USB (see §G).
+- **E2d. P3 Staged-binary manifest** (part of E1b: `car.sh` / build-variant). `collect` already tells builds apart by the
   `Build: ... (date time)` line. A `milestone-7/BINARIES.txt` written at build time
   (name, size, build time, commit, cherry-picks) makes that mapping explicit. A
   `tools/build-variant.sh <ref> <name>` (scratch worktree -> build -> copy -> manifest) also
   avoids building in a worktree that has stale objects from another branch.
+
+---
+
+---
+
+## G. First upstream contribution: USB (how the owners work)
+
+Observed (2026-11-03):
+- Sq00ky merges every PR. Contributors (tom-pryor, dn00, houssems) send focused PRs.
+- New behaviour is opt-in and off by default (`NBT_*`), with host tests, and `readme.md`
+  marks "Car-verified" or "Not car-verified".
+- Contributors never bump `NBT_AAD_BUILD`: the maintainer does that in release commits,
+  with credits.
+- PR #26 was closed in favour of overlapping work already merged, so check open PRs
+  before starting.
+- USB is tom-pryor's PR #42 (with #65 for no-CarPlay cars). He asked for testers.
+
+So, in order:
+1. **Test reports on #42 and #65** from the ID5 (no CarPlay coded). Give facts per run:
+   binary/commit, env, stage table, what worked. This is the most useful thing we can give,
+   and it costs the owners nothing.
+2. **Fixes found on the ID5 go to tom-pryor first**, as a suggestion in the PR thread or a
+   small PR against his `usb-accessory` branch, not a competing PR to main. Each is reshaped
+   into general behaviour: detected or `NBT_*`-gated, host-tested, readme updated, written
+   in the commit-subject style of the repo. Example: hand the phone from Bluetooth to USB,
+   instead of the local kill-bait deregister.
+3. **After #42 merges**: follow-up PRs to main on topic branches from `upstream/main`.
+   For example: a `requirements.md` row for our ID5 firmware, and USB robustness fixes.
+4. Never from id5-dev, never with id5/ files, never with personal identifiers (the guard
+   checks pushes to the fork; upstream PRs are opened from those topic branches).
 
 ---
 
@@ -266,9 +310,8 @@ breaks.
   patches a car run proves necessary. Update `test_usb_accessory` if protocol 2 stays.
 - P2 USB mode in the boot wrapper (NEXT-SESSION item, once USB works end to end).
 - P2 Rebase pr42 work onto upstream main v1.8.67 when PR #42 moves or merges.
-- P2 Public fork hygiene: the BT MAC `<car-bt-mac>` and "BMW nnnnn" are in pushed id5-dev
-  files. Decide whether to scrub (history rewrite) or accept.
-- P3 Move the recon-*.sh scripts from hu.sh to car.sh; retire hu.sh to fallback-only docs.
+- DONE 2026-11-03: public fork hygiene (see E2a).
+- DONE 2026-11-03: recon scripts use car.sh; hu.sh moved to `id5/tools/legacy/`.
 - P3 Split findings.md into a short current-state page and a dated log. Several notes there were
   wrong and later corrected in place.
 - P3 Drop or archive the dead-end tools (mwu-gdb / pdebug / inject, the mitm relays) once
