@@ -391,7 +391,7 @@ Research (2026-11-03, web + local recon; nothing car-checked yet):
 
 ## D. Other backlog (tidiness, robustness, reliability)
 
-- P2 `pr42-id5`: squash `6a17ca7` + `6207f6c` before anything goes public. Keep only the
+- P2 `pr42-id5`: squash `6a17ca7` + `8a8db25` (was 6207f6c) before anything goes public. Keep only the
   patches a car run proves necessary. Update `test_usb_accessory` if protocol 2 stays.
 - P2 USB mode in the boot wrapper (NEXT-SESSION item, once USB works end to end).
 - P2 Rebase pr42 work onto upstream main v1.8.67 when PR #42 moves or merges.

@@ -237,7 +237,7 @@ Shorthands:
 2. Deploy (push size-checks, keeps +x):
    `$C push $U/nbt-aad-usb7-main /var/opt/aa/nbt-aad-usb7`  (upstream main @ 2aa91f7, 557894 B, run 13)
    `$C push $U/nbt-aad-usb5-vanilla /var/opt/aa/nbt-aad-usb5`  (pr42 @ d7ba352, 556253 B)
-   `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 6207f6c, 557117 B)
+   `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 8a8db25, 557117 B)
    `$C push $U/nbt-aad-usb6-mmr /var/opt/aa/nbt-aad-usb6`      (pr42 + PR #65 18d402b, 561950 B)
 3. Note whether the boot-autostarted daemon is running: `$C sh 'pidin ar | grep nbt-aad'`.
 4. PR #65 assumptions on the ID5 (read-only, save the output to the run log):
