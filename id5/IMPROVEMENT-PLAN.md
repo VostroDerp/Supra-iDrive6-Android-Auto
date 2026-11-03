@@ -34,8 +34,9 @@ Intended: HMI loads the NbtAad plugin -> plugin sees `/var/opt/aa/autostart` -> 
 wrapper `/opt/aa/nbt-aad` -> the wrapper starts knockd. Anything that breaks that chain also
 removes SSH: a wrapper edit, autostart moved aside (planned for one hypothesis test), or the
 plugin's boot guard latching autostart off after 3 crash-boots in 15 min.
-**Car check 2026-11-03: the chain was never complete.** The wrapper on the car has no knockd step and
-waits forever for a BM3 dongle DHCP lease on dwc0; every knockd start in knock.log was manual. Interim:
+**Car check 2026-11-03: the chain was never complete.** The wrapper on the car has no knockd step (the repo copy has
+one but was never installed) and waits forever for a BM3 dongle DHCP lease on dwc0; every knockd start in
+knock.log was manual. Interim:
 the USB boot wrapper (NEXT-SESSION N1) starts knockd first (option b); NbtService stays the goal.
 
 Options:

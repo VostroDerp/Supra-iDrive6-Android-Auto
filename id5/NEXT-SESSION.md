@@ -21,18 +21,18 @@ The two release wrappers iDrive starts stay in their dwc0 DHCP loop for good. Th
 
 ### N1. USB boot wrapper (MUST, ~25 min, one reboot)
 Goal: after a reboot, knock works without the fallback and AA comes up when the phone is plugged in.
-- [ ] Laptop first: write the new wrapper as `id5/tools/hu-install/nbt-aad-usb.sh` (shell-checked on the host):
-      `unset LD_PRELOAD`; start knockd first and unconditionally (option b of IMPROVEMENT-PLAN A1, the interim
-      until NbtService proves itself); no dwc0 DHCP wait; start our mm-renderer if none runs; then
-      `exec /var/opt/aa/nbt-aad-usb7` with `NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0 NBT_VEHICLE=bmw`,
-      AOI/MMR config and `NBT_LOG_FILE=/var/opt/aa/nbt.log`. Read `/opt/aa/nbt-aad.env` (the app exports it):
-      its NBT_AP_* wireless settings stay, but check nothing in it conflicts with USB mode.
-- [ ] Car: `touch /opt/aa/.w && rm /opt/aa/.w` (writable?), keep the old one
-      (`cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1`), push the new one to `/opt/aa/nbt-aad`.
-      The old wireless-only daemon `/var/opt/aa/nbt-aad` stays untouched.
+Wrapper: `id5/tools/hu-install/nbt-aad-usb.sh` (written and host-tested 2026-11-03 with stubs: knockd first and
+only once, log rotated at 8 MB, BM3 `NBT_AP_*` dropped, run 13–15 env, exec usb7; logs and exits if usb7 is
+missing). It starts knockd itself (option b of IMPROVEMENT-PLAN A1, the interim until NbtService proves itself).
+- [ ] Push it and keep the old one: `$C sh 'cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1'`,
+      `$C push id5/tools/hu-install/nbt-aad-usb.sh /var/opt/aa/nbt-aad-usb.sh`.
+- [ ] Install (/opt is on /fs/sda0, read-only until remounted; Devin's first push failed on exactly that):
+      `$C sh 'mount -uw /fs/sda0 && cp /var/opt/aa/nbt-aad-usb.sh /opt/aa/nbt-aad && chmod 755 /opt/aa/nbt-aad; mount -ur /fs/sda0; ls -l /opt/aa/nbt-aad'`.
+      The old wireless-only daemon `/var/opt/aa/nbt-aad` stays untouched; usb7 is already at `/var/opt/aa/nbt-aad-usb7`.
 - [ ] Test without a reboot: kill the stuck wrappers and any test daemon, select Android Auto in the menu (the app
-      starts the wrapper), plug in -> AA. Then reboot: iDrive up -> `$C knock` works with no fallback, plug in -> AA.
-- [ ] Back out: `cp /var/opt/aa/nbt-aad.wrapper.v1 /opt/aa/nbt-aad` (over the fallback if knock is gone).
+      starts the wrapper), plug in -> AA, and `pidin ar` shows knockd once. Then reboot: iDrive up -> `$C knock`
+      works with no fallback, plug in -> AA. Daemon log: `/var/opt/aa/nbt.log`.
+- [ ] Back out: the install line with `/var/opt/aa/nbt-aad.wrapper.v1` (over the fallback if knock is gone).
 
 ### N2. NbtService (B6 as written, one reboot; then B7)
 After N1, the wrapper also starts knockd, so B6 only proves the plugin loads and its toggle works. B7
@@ -54,7 +54,7 @@ Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-b
 - Repro for the reconnect bug (charger on): plug in, picture up, iDrive off and on with the power button, phone
   left plugged in. Expect the same reopen + decrypt failures. Also watch whether an engine crank does it.
 - Nav prompts not tested (Maps sound was off).
-- PR #65 feedback (run 15 works): draft written 2026-11-03, post when the owner OKs it.
+- PR #65 (run 15 works): no post (owner: Tom hasn't asked for testers). The result stays in the run log.
 - B2 menu anchors: `/opt/hmi/ID5/data/ro/Plugins` holds only NbtAad, so the stock plugin XMLs are elsewhere.
   Find them before B8.
 - Firmware/I-level string: no version file found (only `/etc/gps_G6_V7_ver20.cfg`). USER: photo of iDrive's
@@ -67,9 +67,10 @@ Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-b
 - **USB Android Auto works on the ID5**, with upstream main (usb7, 2aa91f7) in direct mode plus the driver claim.
   Video, touch, knob, keys, BT media, the Assistant, calls, iDrive and back, reverse, and replug (<5 s to the picture)
   all work. The BMW identity (`NBT_VEHICLE=bmw`, run 14) shows BMW and its exit icon. PR #65's factory renderer works too (run 15).
-- **knockd has never started on its own.** The release wrapper `/opt/aa/nbt-aad` (Devin, 2 Nov 00:58) waits
-  forever for a non-169.254 DHCP lease on dwc0 (the BM3 dongle network) and has no knockd step. `start-aa.sh` does
-  start knockd, but nothing runs it at boot. Every start in `knock.log` was manual. The release daemon it would
+- **knockd has never started on its own.** The wrapper on the car, `/opt/aa/nbt-aad` (Devin, 2 Nov 00:58), waits
+  forever for a non-169.254 DHCP lease on dwc0 (the BM3 dongle network) and has no knockd step. The repo copy
+  (`hu-install/nbt-aad.sh`, 2 Nov 21:48) gained a knockd step but was never installed (/opt needs
+  `mount -uw /fs/sda0`). Nothing runs `start-aa.sh` at boot either. Every start in `knock.log` was manual. The release daemon it would
   launch, `/var/opt/aa/nbt-aad` (1 Nov), is wireless-only, so AA does not come up after a reboot either.
   Fix: N1.
 - **The way back works.** `car.sh fallback` had a bug (port_open ignored the diag IP, so it never got past its
