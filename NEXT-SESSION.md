@@ -13,18 +13,25 @@ SEQUENCE:
 3. Kill leftovers:
    `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done`
    `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done`
-4. Launch DIRECT mode (no shared /dev/oap — media app can't steal records):
+4. Deploy fresh build nbt-aad-usb4 (PR42-tip + our patches: kill-bait,
+   Android-identity defaults, cipher env; adds browser-audio path +
+   wireless-release when USB gives up):
+   `plink ... 'cat > /var/opt/aa/nbt-aad-usb4' < milestone-7/nbt-aad`
+   from ~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb (branch pr42-id5)
+   then `chmod +x /var/opt/aa/nbt-aad-usb4`.
+5. Launch DIRECT mode (no shared /dev/oap — media app can't steal records):
 ```
 AA=/var/opt/aa; CP=/fs/sda0/opt/conn
 NBT_USB=1 NBT_USB_DIRECT=1 NBT_USB_CLAIM_DRIVER=0 NBT_SPP_REREG_S=0 \
-NBT_USB_MANUFACTURER="Android" NBT_USB_MODEL="Android Auto" \
-NBT_USB_URL="https://github.com/Sq00ky/Supra-iDrive6-Android-Auto" \
 NBT_LOG_FILE=$AA/nbt-usb13.log NBT_VERBOSE=1 \
 AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf \
 LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:$CP/lib/carplay:/opt/sys/lib \
-$AA/nbt-aad-usb3 >$AA/nbt-usb13-stdout.log 2>&1 &
+$AA/nbt-aad-usb4 >$AA/nbt-usb13-stdout.log 2>&1 &
 ```
-5. Replug phone. WATCH: `grep -nE "TLS record|decrypt|Frame RX|Streaming" $AA/nbt-usb13.log`
+   (identity envs no longer needed — defaults are Android/AndroidAuto+github url;
+   audio defaults to NBT_AUDIO_MODE=browser -> ConnectionMaster 0xb8 mixer path,
+   which bypasses the audioconn 0xc7 CMCommand failure we kept hitting)
+6. Replug phone. WATCH: `grep -nE "TLS record|decrypt|Frame RX|Streaming" $AA/nbt-usb13.log`
 
 SUCCESS = TLS records >6 keep decrypting (ch12/13/14 opens respond),
 video frames arrive ('Streaming Media Frame'), HU screen shows AA.
