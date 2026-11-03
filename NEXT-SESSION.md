@@ -16,6 +16,9 @@ Shorthands:
 - [ ] PR #42 moved? `cd $U/.. && git fetch upstream pull/42/head && git log --oneline pr42..FETCH_HEAD`
       New commits -> read them, rebuild vanilla (and rebase pr42-id5), re-run host
       tests, re-stage. Same tip (d7ba352) -> keep the staged binaries.
+- [ ] PR #65 (tom-pryor, mm-renderer for cars without CarPlay coded) moved?
+      `git fetch upstream pull/65/head && git log --oneline 18d402b..FETCH_HEAD`.
+      usb6 = pr42 @ d7ba352 + ONLY 18d402b (cherry-picked, not main's v1.8.62..67).
 - [ ] Host tests green on what we deploy (2026-11-03: vanilla test_usb_accessory /
       test_session_owner / test_usb_log pass; patched passes with its protocol-2 assert).
 - [ ] Phone logcat path: phone + laptop on one Wi-Fi (not the car's), Wireless
@@ -29,7 +32,14 @@ Shorthands:
 2. Deploy (push size-checks, keeps +x):
    `$C push $U/nbt-aad-usb5-vanilla /var/opt/aa/nbt-aad-usb5`  (pr42 @ d7ba352, 556253 B)
    `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 6207f6c, 557117 B)
+   `$C push $U/nbt-aad-usb6-mmr /var/opt/aa/nbt-aad-usb6`      (pr42 + PR #65 18d402b, 561950 B)
 3. Note whether the boot-autostarted daemon is running: `$C sh 'pidin ar | grep nbt-aad'`.
+4. PR #65 assumptions on the ID5 (read-only, save the output to the run log):
+   `$C sh 'ls -l /opt/conn/bin/carplay/mm-renderer /opt/conn/etc/carplay/mm-renderer.conf /opt/conn/etc/carplay/mm-playlist.conf; ls -ld /opt/conn/lib/carplay/mm /var/opt/conn/carplay/carplay.ini /fs/sda1/opt/conn/carplay/carplay.ini; pidin ar | grep mm-renderer'`
+   #65 spawns the FACTORY renderer (/opt/conn paths, factory conf with playlist engine) and
+   treats "no carplay.ini" as "CarPlay not coded". Our wrapper instead runs
+   /fs/sda0/opt/conn/... with our trimmed $AA/mm-renderer.conf (id5.md: the factory playlist
+   engine wanted RO /etc/mm). If carplay.ini EXISTS here, #65 waits until 90 s uptime first.
 
 ### 0c. Per run (N = 13, 14, ...)
 1. Prediction written in the run log below (what stage we expect to reach, why).
@@ -72,11 +82,19 @@ $AA/$BIN >$AA/nbt-usb$N-stdout.log 2>&1 &
 - `media frames` > 0 and AA on screen -> SUCCESS. Same run: note video, touch, knob,
   audio (browser mode), call audio; then unplug/replug once (reconnect is a known
   PR weak spot). Then: post results to PR #42.
+- After a SUCCESS only: the PR #65 run (one variable = who starts mm-renderer). Kill the
+  wrapper's renderer (`slay mm-renderer`), launch usb6 with the SAME env but WITHOUT
+  AOI_CONFIG / MM_RENDERER_CONFIG. Expect `mm-renderer we started (#65)` = 1, then video.
+  `UNREACHABLE` -> #65's factory env does not work on the ID5: grab $AA/nbt-usbN.log +
+  `sloginfo`, restart our renderer (start-aa.sh step 1). Either way = feedback for PR #65.
+  Before that, usb5/usb6 runs use the wrapper's renderer, so #65 code stays idle (it
+  finds the running /fs/sda0/.../conn/bin/carplay/mm-renderer by path tail and never spawns).
 
 ### Run log (one line per run; prediction BEFORE, result AFTER)
 | N  | binary | change vs previous | prediction | furthest stage | decision |
 |----|--------|--------------------|------------|----------------|----------|
 | 13 | usb5   | first direct+claim run | reaches TLS; no decrypt failures if claim holds; may stall at VersionResponse if phone does BT WPP | | |
+| (after success) | usb6 | renderer: wrapper's -> #65 spawns factory one | `we started (#65)` = 1; video OK unless factory conf breaks on ID5 | | |
 
 ### Open hypotheses (test only when the tree points at them)
 - First `SppUuidRegister response` GapErrorCode=5 = something registered

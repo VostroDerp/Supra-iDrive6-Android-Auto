@@ -48,7 +48,8 @@ knock() {
 # Remote file size in bytes from `ls -l` (the HU has no stat / wc).
 remote_size() { run "ls -l '$1'" 2>/dev/null | awk 'NR==1 {print $5}'; }
 
-# USB session stages in order (PR #42 log strings). The first stage with 0 hits is where the run stopped.
+# Session stages in order (PR #42 / #65 log strings). The three mm-renderer rows come from daemon start-up and are
+# normally 0 (renderer already reachable). From `driver path claimed` on, the first 0 row is where the run stopped.
 stages() {
     local log=$1 n label pat
     [ -f "$log" ] || die "no log $log"
@@ -56,6 +57,9 @@ stages() {
         n=$(grep -cE -- "$pat" "$log")
         printf '  %-28s %5s   %s\n' "$label" "$n" "$(grep -m1 -E -- "$pat" "$log" | cut -c1-110)"
     done <<'EOF'
+mm-renderer waited for|mm-renderer not reachable yet
+mm-renderer we started (#65)|\[MMR\] (Started|Adopted)
+mm-renderer UNREACHABLE|mm-renderer still unreachable
 driver path claimed|\[UsbDirect\] claimed /
 claim NOT effective (race!)|claim not effective
 io-usb connected|connected to io-usb
