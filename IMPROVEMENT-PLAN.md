@@ -8,12 +8,19 @@ Every head-unit change gets its own car step: never in the same run as a USB/AA 
 
 ---
 
-## A. Head-unit access (knockd v2)
+## A. Head-unit access (knockd v2) — approved work
 
 Goal (unchanged): SSH to my own car with no third-party unlock service, and no way to lock
-myself out.
+myself out. **Hard rule: the stock path (FDAC unlock -> stock dropbear on :22 with the generic
+password) must keep working untouched.** Ours is a separate sshd binary run with its own
+config file (`-f /var/opt/aa/sshd_config`), on its own port (3804), with its own key file.
+Nothing in A or F touches /etc, the stock dropbear or its settings.
 
-### A1. P1 — Separate SSH access from the AA wrapper
+Build order: C1+C2 (lockout / disk-fill bugs), then A2 + A3 + the rest of C (knockd v2,
+host-tested), then A1 (own boot hook), then A5 (toggle). Each is its own car step, verified
+on a cold boot before the old path is removed.
+
+### A1. P1 — Separate SSH access from the AA wrapper — APPROVED 2026-11-03
 Today: HMI loads the NbtAad plugin -> plugin sees `/var/opt/aa/autostart` -> launches the
 wrapper `nbt-aad.sh` -> the wrapper starts knockd. Anything that breaks that chain also
 removes SSH: a wrapper edit, autostart moved aside (planned for one hypothesis test), or the
@@ -37,12 +44,12 @@ Precondition: never remove the old path until the new one has been seen working 
 boot. For a while, both may start knockd: the second one fails to bind and exits, which is
 harmless.
 
-### A2. P1 — Restrict which networks can reach knockd and sshd (allowlist)
+### A2. P1 — Restrict which networks can reach knockd and sshd (allowlist) — APPROVED 2026-11-03
 Today, knockd binds `INADDR_ANY` and `sshd_config` has `ListenAddress 0.0.0.0`. "ENET-only"
 is not true: the BM3 dongle's Wi-Fi reaches dwc0, and so would `uap0` (the car's own AP)
 and `wfd0` once they are up.
 
-Decision: an **allowlist** in knock.conf, `ALLOW_NETS=169.254.0.0/16,172.16.224.0/24`
+Decision (approved): an **allowlist** in knock.conf, `ALLOW_NETS=169.254.0.0/16,172.16.224.0/24`
 (ENET link-local + the car AP).
 - knockd checks the **local** address of each accepted socket (`getsockname`) and drops
   non-matches before sending a nonce.
@@ -65,7 +72,7 @@ CarPlay ports to AP clients. So **TCP 851/3804 over uap0 also needs a pf anchor 
 have to load it at start). Recon (read-only, NEXT-SESSION 0e): `ifconfig -a`,
 `pfctl -s rules`, `pfctl -s Anchors`.
 
-### A3. P1 — Open window + idle timeout
+### A3. P1 — Open window + idle timeout — APPROVED 2026-11-03 (idle timeout required)
 Today, sshd stays up from the first knock until reboot.
 
 New behaviour:
@@ -80,15 +87,7 @@ In sshd_config:
 - `LoginGraceTime 30`.
 - Optionally, an idle-shell timeout through `TMOUT` in the session environment.
 
-### A4. P2 — Separate keys and multiple keys
-- **Separate keys.** `genkey.sh` uses one RSA key both to sign knocks and as the SSH login
-  key. Hash and input lengths differ, so I see no practical cross-protocol attack. Still,
-  one key per purpose is basic hygiene and costs nothing.
-- **Multiple keys.** knockd accepts one key. Allow a key list, `PUBKEY_DIR`, with one file
-  per device (laptop, phone), and log which key knocked. Then a lost phone means deleting
-  one file. Pair each key with an `authorized_keys` entry.
-
-### A5. P2 — iDrive menu toggle "SSH for 15 minutes"
+### A5. P2 — iDrive menu toggle "SSH for 15 minutes" — APPROVED 2026-11-03, placement to decide
 Being in the car is the authorization: the toggle opens the A3 window directly, with no knock.
 sshd itself stays key-only.
 - Mechanism: the plugin sends `open` to knockd on a 127.0.0.1 UDP port (or writes a flag
@@ -97,74 +96,22 @@ sshd itself stays key-only.
   checkbox, a status line, "Restart Android Auto" and "Copy logs to USB". The plugin's XML
   declares where the entry sits in iDrive, so the ID5 options (Settings, or next to the AA
   row in Media/Radio) need recon.
+- Placement is declared by `insertStateID` (parent menu) + `insertAfterFocusID` (row it
+  follows) in the plugin XML. NbtAad uses `insertStateID="20"` = Media/Radio. The stock
+  plugins' XML on the HU (NEXT-SESSION 0e) shows which other menus accept plugin rows.
+  Options, in order of preference:
+  1. **Settings menu**: a system function, out of passengers' way. Only if a stock
+     plugin proves an ID5 anchor there.
+  2. **My Vehicle / vehicle info** (same condition).
+  3. **Media/Radio, below the Android Auto row**: the anchor is known to work on this car.
+     The fallback.
+  Inside the entry: "SSH (15 min)" checkbox + remaining time; later status, Restart AA,
+  Copy logs to USB.
 - Not in upstream's NbtAad app: that would be a local patch we'd have to carry forever.
 
-### A6. P3 — Phone tool over the car's Wi-Fi (after the internal AP works)
-- Feasible with A2's allowlist (uap0) and a phone key (A4).
-- A phone is a more exposed place for a key than an encrypted laptop (apps, backups,
-  loss), so give the phone key a restricted entry in `authorized_keys`:
-  `command="/var/opt/aa/phone-cmd.sh",no-pty,no-port-forwarding ...`. It then only runs a
-  fixed set of actions (status, restart AA, fetch logs), not a root shell.
-- Check that the HU's OpenSSH version supports these options (`sshd -V` / `ssh -V`).
-
-### A7. sshd_config clean-up (current file: `tools/ssh-vetting/aa-install/sshd_config`)
-None of these options has a comment or note saying why it was set.
-
-| Option | Now | What it does | Probable reason it's set | Plan |
-|---|---|---|---|---|
-| `PermitUserEnvironment` | yes | Lets `~/.ssh/environment` or `environment=` in authorized_keys set session env vars (LD_PRELOAD, LD_LIBRARY_PATH...). Off by default because it can get around `command=` restrictions | Probably to give sessions the QNX `LD_LIBRARY_PATH`. Nothing we use needs it: car.sh sets env on the command line | **no**. Needed for A6's `command=` keys to mean anything |
-| `StrictModes` | no | sshd refuses an authorized_keys file or directory that others can write. That stops another local user from planting a key | Very likely because QNX dirs on the path (`/var`, `/var/opt`, `/var/opt/aa`) are group/world-writable or not root-owned | Move `authorized_keys` to a root-owned 0700 dir with a 0600 file. Test with a **second sshd on another port** before switching. Turn it on only if the parent dirs pass; otherwise leave it off, since we're the only user |
-| `UsePrivilegeSeparation` | no | Privsep parses pre-auth network input in an unprivileged chrooted child. Off = that code runs as root | Needs an `sshd` user and an empty root-owned chroot dir. `/etc/passwd` is read-only on the HU | Check `grep sshd /etc/passwd` and the OpenSSH version. It probably stays off. knockd + A2 + A3 are what make that acceptable |
-| `HostKey ..._dsa_key` | on | DSA host key: obsolete and weak | Copied from a stock template | Remove the line |
-| `ChallengeResponseAuthentication` / `KbdInteractiveAuthentication` | unset (old default = yes) | Keyboard-interactive auth, a second password-style path | Not set | Set **no** explicitly |
-| `PermitRootLogin` | yes | Root login | Root is the only account | `without-password` (same effect with PasswordAuthentication off, but it states the intent) |
-
 ---
 
-## B. Surviving firmware updates without an unlock service
-
-Facts: the first code execution on a stock HU needs BMW's signed unlock (FD2F RSA-2048, and
-the HU holds only the public key) or an exploit / hardware access. What we can control is
-**not losing** our foothold.
-
-### B1. P1 — Avoid the risk: don't let the head unit be reprogrammed
-- At the dealer, ask for "no software update / no programming of the head unit".
-  Recalls and other ECUs can still be done.
-- Check the job sheet afterwards.
-- On returning, run `car.sh status` before anything else.
-
-### B2. P1 — Keep everything ours on the writable partition
-- iDrive also loads plugins from `/var/opt/hmi/data/ID5/Plugins/` (upstream readme, "The
-  iDrive app").
-- If the hook plugin (A1a) and knockd/sshd/keys all live under `/var`, nothing of ours is
-  on the system image an update rewrites.
-- Unknowns:
-  - whether an update wipes `/var`. User data such as BT pairings and settings surviving
-    updates would hint it is kept;
-  - whether a new HMI version changes the PluginApp ABI, in which case our plugin no
-    longer loads.
-- Recon (read-only): `mount`, `df -k /var`, `ls -ld /var/opt/hmi/data/ID5`.
-
-### B3. P2 — Look for a second hook that doesn't depend on the HMI
-A stock component that runs something from `/var` or USB without a signature check (a
-start-up script, update helper or diag hook) would give a second way in if the HMI hook
-breaks.
-- Method: from pulled binaries and start-up scripts, grep for paths under `/var`,
-  `/fs/usb*` or `/mnt` used with `sh` / `spawn` / `system`.
-- This is research with no promised result.
-
-### B4. P2 — If the foothold is lost anyway
-- One unlock from any provider gets it back.
-- Keep a single `restore.sh` + tarball on the laptop that reinstalls everything ours in
-  one go, and test it.
-- TurboCode is the project's partner, so its free unlocks are likely to stay while the
-  project is alive; bavarian is a second provider.
-- No hardware route has been researched (pulling the unit, eMMC, serial console). It
-  carries real risk to the unit; last resort only.
-
----
-
-## C. knockd.c review (2026-11-03, id5-dev `tools/ssh-vetting/knock/knockd.c`)
+## C. knockd.c review findings — ALL APPROVED 2026-11-03 (id5-dev `tools/ssh-vetting/knock/knockd.c`)
 
 Sound: fresh 32-byte nonce from `/dev/urandom`, `RSA_verify` with SHA-256 and e=65537,
 fail-safe exits when the config or key is missing, SIGPIPE ignored, daemonises after bind
@@ -179,6 +126,137 @@ so the wrapper's retry loop works.
 | C5 | P2 | The signature covers only `SHA256(nonce)`, with no context (protocol, HU identity). Not exploitable as is. Combined with the A4 key reuse it is the kind of thing that turns into a problem later | v2 protocol: sign `"nbt-knock-v2" ‖ hu-id ‖ nonce`; keep v1 accepted until knock.py moves over |
 | C6 | P3 | Stale docs: the header and the `conf_port` default say 46610 (the deployed value is 851). `RSA_FLAG_NO_CONSTTIME` on the hex path is pointless for a public key (harmless). `send()` has no timeout | Tidy along with the v2 work |
 | C7 | P3 | No host test | Host build + a test with a throwaway key: good / bad / short / slow signature, off-allowlist peer, log cap |
+
+---
+
+## B. Firmware updates
+
+### B1. Firmware updates: DECIDED 2026-11-03
+The head unit will not be updated (no dealer programming of the HU). B2–B4 are kept in
+the follow-up list as a precaution.
+
+---
+
+## E. Proposed 2026-11-03 — awaiting decision
+
+### E1. Less car time per answer
+- **E1a. Desk test rig (largest win).** `AASession::start(int fd)` takes any socket, and
+  `aa_session.cpp` / `aa_cryptor.cpp` include no QNX headers. USB is already bridged to a
+  socketpair (usb_accessory.hpp). A Linux host program could do the whole chain at the
+  desk against the real phone:
+  - libusb AOAP switch (identity strings, protocol 1/2) + bulk bridge -> socketpair ->
+    the real AASession;
+  - stub callbacks that dump H.264 to a file for ffplay.
+  It answers the phone-side questions: accessory accepted? version? TLS with our cipher
+  list? service discovery accepted? video starts? Every ID5 USB failure so far except the
+  QNX-only part (driver claim, io-usb, NbtMediaMainApp stealing) was on that list. The same
+  program on TCP covers wireless protocol work. A test tool upstream could use too.
+- **E1b. `car.sh run <N> <bin>`.** One command that kills leftovers, clears logcat, launches
+  with the standard env, prints "plug the phone in", waits until a stage is reached or
+  60 s pass, then runs `collect N`. Run time goes from about 5 min of pasting to about 1 min.
+- **E1c. Batch each car session.** Prepare the run list with branches in advance (the
+  decision tree already does this). Do the read-only recon (0e) in the same session.
+- **E1d. Test from indoors (to research).** A small Linux box (Pi or old laptop) on the
+  car's ENET, joined to home Wi-Fi when the car is parked at home. car.sh runs on it, and
+  the phone in the car uses adb over home Wi-Fi.
+  - You only need the car awake on the charger. You don't need to sit in it.
+  - It keeps the A2 allowlist intact, because the box talks to the HU over ENET.
+  - Open questions: home Wi-Fi reach to the car, and replugging the phone without a hand.
+    Test whether `adb shell svc usb resetUsbGadget` is a good enough "replug"; otherwise
+    use a switchable USB cable.
+- **E1e. Bench head unit (biggest change, costs money).** A used NBT Evo + display + bench
+  harness + 12 V supply, with one paid unlock, then knockd.
+  - Covers USB AA, video, Bluetooth and the uAP/Wi-Fi work: everything inside the HU, so
+    nearly all of goals 1–3.
+  - It cannot test the controller knob (MOST), the car's audio routing or vehicle data.
+  - Bench wake-up requirements need research before buying.
+
+### E2. Repo issues spotted
+- **E2a. P1 Personal identifiers on the public fork** (pushed id5-dev):
+  - car BT MAC `<car-bt-mac>`;
+  - the car's Wi-Fi Direct SSID `DIRECT-xx-BMWnnnnn` + GO BSSID;
+  - "BMW nnnnn": BMW names the HU after the last 5 VIN digits.
+  Low risk, but it is a car identifier. Decide: redact going forward, or rewrite history.
+  The generic root password in the docs is upstream's published one (not ours), so that is
+  fine.
+- **E2b. P2 The pre-push guard only checks file names and sizes.** It let the identifiers
+  above through. Add content patterns (MAC addresses, `BMW[0-9]{5}`, `DIRECT-..-BMW`,
+  PEM private keys).
+  Also, the hook is a relative symlink into the main worktree's `tools/`. If that worktree
+  checks out `main`, the link dangles and git **silently skips** the guard. Fix: a
+  hook that refuses to push if the guard script is missing.
+- **E2c. P2 Upstream contributions with no car needed:**
+  - a `.gitignore` for build outputs;
+  - a host-test runner (`tests/run.sh` or `make check`): 29 tests, each with its own build
+    line;
+  - GitHub Actions running the host tests.
+  These are small and useful, and a good first PR.
+- **E2d. P3 Staged-binary manifest.** `collect` already tells builds apart by the
+  `Build: ... (date time)` line. A `milestone-7/BINARIES.txt` written at build time
+  (name, size, build time, commit, cherry-picks) makes that mapping explicit. A
+  `tools/build-variant.sh <ref> <name>` (scratch worktree -> build -> copy -> manifest) also
+  avoids building in a worktree that has stale objects from another branch.
+
+---
+
+## F. Follow-up list (agreed in principle, not scheduled)
+
+### F1. (was A4) P2 — Separate keys and multiple keys
+- **Separate keys.** `genkey.sh` uses one RSA key both to sign knocks and as the SSH login
+  key. Hash and input lengths differ, so I see no practical cross-protocol attack. Still,
+  one key per purpose is basic hygiene and costs nothing.
+- **Multiple keys.** knockd accepts one key. Allow a key list, `PUBKEY_DIR`, with one file
+  per device (laptop, phone), and log which key knocked. Then a lost phone means deleting
+  one file. Pair each key with an `authorized_keys` entry.
+
+### F2. (was A6) P3 — Phone tool over the car's Wi-Fi (after the internal AP works)
+- Feasible with A2's allowlist (uap0) and a phone key (A4).
+- A phone is a more exposed place for a key than an encrypted laptop (apps, backups,
+  loss), so give the phone key a restricted entry in `authorized_keys`:
+  `command="/var/opt/aa/phone-cmd.sh",no-pty,no-port-forwarding ...`. It then only runs a
+  fixed set of actions (status, restart AA, fetch logs), not a root shell.
+- Check that the HU's OpenSSH version supports these options (`sshd -V` / `ssh -V`).
+
+### F3. (was A7) sshd_config clean-up (current file: `tools/ssh-vetting/aa-install/sshd_config`)
+None of these options has a comment or note saying why it was set.
+
+| Option | Now | What it does | Probable reason it's set | Plan |
+|---|---|---|---|---|
+| `PermitUserEnvironment` | yes | Lets `~/.ssh/environment` or `environment=` in authorized_keys set session env vars (LD_PRELOAD, LD_LIBRARY_PATH...). Off by default because it can get around `command=` restrictions | Probably to give sessions the QNX `LD_LIBRARY_PATH`. Nothing we use needs it: car.sh sets env on the command line | **no**. Needed for A6's `command=` keys to mean anything |
+| `StrictModes` | no | sshd refuses an authorized_keys file or directory that others can write. That stops another local user from planting a key | Very likely because QNX dirs on the path (`/var`, `/var/opt`, `/var/opt/aa`) are group/world-writable or not root-owned | Move `authorized_keys` to a root-owned 0700 dir with a 0600 file. Test with a **second sshd on another port** before switching. Turn it on only if the parent dirs pass; otherwise leave it off, since we're the only user |
+| `UsePrivilegeSeparation` | no | Privsep parses pre-auth network input in an unprivileged chrooted child. Off = that code runs as root | Needs an `sshd` user and an empty root-owned chroot dir. `/etc/passwd` is read-only on the HU | Check `grep sshd /etc/passwd` and the OpenSSH version. It probably stays off. knockd + A2 + A3 are what make that acceptable |
+| `HostKey ..._dsa_key` | on | DSA host key: obsolete and weak | Copied from a stock template | Remove the line |
+| `ChallengeResponseAuthentication` / `KbdInteractiveAuthentication` | unset (old default = yes) | Keyboard-interactive auth, a second password-style path | Not set | Set **no** explicitly |
+| `PermitRootLogin` | yes | Root login | Root is the only account | `without-password` (same effect with PasswordAuthentication off, but it states the intent). **Our sshd only**: the stock dropbear on :22 has its own settings and keeps password login |
+
+### F4. (was B2) P1 — Keep everything ours on the writable partition
+- iDrive also loads plugins from `/var/opt/hmi/data/ID5/Plugins/` (upstream readme, "The
+  iDrive app").
+- If the hook plugin (A1a) and knockd/sshd/keys all live under `/var`, nothing of ours is
+  on the system image an update rewrites.
+- Unknowns:
+  - whether an update wipes `/var`. User data such as BT pairings and settings surviving
+    updates would hint it is kept;
+  - whether a new HMI version changes the PluginApp ABI, in which case our plugin no
+    longer loads.
+- Recon (read-only): `mount`, `df -k /var`, `ls -ld /var/opt/hmi/data/ID5`.
+
+### F5. (was B3) P2 — Look for a second hook that doesn't depend on the HMI
+A stock component that runs something from `/var` or USB without a signature check (a
+start-up script, update helper or diag hook) would give a second way in if the HMI hook
+breaks.
+- Method: from pulled binaries and start-up scripts, grep for paths under `/var`,
+  `/fs/usb*` or `/mnt` used with `sh` / `spawn` / `system`.
+- This is research with no promised result.
+
+### F6. (was B4) P2 — If the foothold is lost anyway
+- One unlock from any provider gets it back.
+- Keep a single `restore.sh` + tarball on the laptop that reinstalls everything ours in
+  one go, and test it.
+- TurboCode is the project's partner, so its free unlocks are likely to stay while the
+  project is alive; bavarian is a second provider.
+- No hardware route has been researched (pulling the unit, eMMC, serial console). It
+  carries real risk to the unit; last resort only.
 
 ---
 

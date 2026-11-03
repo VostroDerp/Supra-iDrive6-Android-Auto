@@ -96,9 +96,11 @@ Save the output to `recon/improve-$(date +%F).txt`:
 $C sh 'ifconfig -a; pfctl -s rules; pfctl -s Anchors; mount; df -k /var /fs/sda0'
 $C sh 'ls -ld /var /var/opt /var/opt/aa /var/opt/hmi/data/ID5 /var/opt/hmi/data/ID5/Plugins; ls -l /var/opt/aa/authorized_keys'
 $C sh 'grep sshd /etc/passwd; /usr/sbin/sshd -V 2>&1 | sed -n 1,2p; ls -l /var/opt/aa/knock.log; tail -5 /var/opt/aa/knock.log'
+$C sh 'ls /opt/hmi/ID5/data/ro/Plugins; grep -h "<pluginApp " /opt/hmi/ID5/data/ro/Plugins/*/*.xml'
 ```
-Answers: A2 interfaces and pf, A7 StrictModes/privsep feasibility, B2 whether /var is its
-own partition and the /var plugin dir exists.
+Answers: A2 interfaces and pf; A5 which menus accept plugin rows (`insertStateID` of the
+stock plugins); F3 StrictModes/privsep feasibility; F4 whether /var is its own partition
+and the /var plugin dir exists.
 
 ### Run log (one line per run; prediction BEFORE, result AFTER)
 | N  | binary | change vs previous | prediction | furthest stage | decision |
