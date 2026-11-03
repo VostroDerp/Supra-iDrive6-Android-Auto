@@ -14,25 +14,44 @@ SEQUENCE:
    `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done`
    `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done`
 4. Deploy BOTH builds from ~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb:
-   `cat > /var/opt/aa/nbt-aad-usb4` < milestone-7/nbt-aad-usb4-patched  (PR42+patches)
-   `cat > /var/opt/aa/nbt-aad-usb5` < milestone-7/nbt-aad-usb5-vanilla (pure upstream)
+   `cat > /var/opt/aa/nbt-aad-usb4` < milestone-7/nbt-aad-usb4-patched  (pr42-id5 @ 6207f6c, rebuilt 2026-11-03 01:02, 557117 B)
+   `cat > /var/opt/aa/nbt-aad-usb5` < milestone-7/nbt-aad-usb5-vanilla (pr42 @ d7ba352, pure upstream PR tip)
    chmod +x both.
    ORDER: try usb5 (vanilla) FIRST — upstream's own flow may suffice now;
    if phone still chases wireless bait, switch to usb4 (kill-bait deregisters
-   our stale 'AndroidAuto' SPP record).
-5. Launch DIRECT mode (no shared /dev/oap — media app can't steal records):
+   the 'AndroidAuto' SPP record and never registers it in USB mode).
+   Vanilla tell: log line `[Wireless] phone on the USB cable: Bluetooth links are
+   left alone` + phone logcat WIRELESS_SETUP_WPP_VERSION_REQUEST_TIMEOUT loop =
+   vanilla parks BT (main.cpp:917) while the phone waits on WPP -> go to usb4.
+   usb4 rebuild (2026-11-03): cipher default is upstream's list again
+   (NBT_SSL_CIPHERS still overrides; CBC pinning was disproved in usb12);
+   build objects dropped from the branch; kill-bait no longer logs "registering again".
+5. Launch DIRECT mode (no shared /dev/oap — media app can't steal records).
+   Set BIN to the build under test (usb5 first, then usb4) and bump N per run:
 ```
-AA=/var/opt/aa; CP=/fs/sda0/opt/conn
-NBT_USB=1 NBT_USB_DIRECT=1 NBT_USB_CLAIM_DRIVER=0 NBT_SPP_REREG_S=0 \
-NBT_LOG_FILE=$AA/nbt-usb13.log NBT_VERBOSE=1 \
+AA=/var/opt/aa; CP=/fs/sda0/opt/conn; BIN=nbt-aad-usb5; N=13
+NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0 \
+NBT_LOG_FILE=$AA/nbt-usb$N.log NBT_VERBOSE=1 \
 AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf \
 LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:$CP/lib/carplay:/opt/sys/lib \
-$AA/nbt-aad-usb4 >$AA/nbt-usb13-stdout.log 2>&1 &
+$AA/$BIN >$AA/nbt-usb$N-stdout.log 2>&1 &
 ```
-   (identity envs no longer needed — defaults are Android/AndroidAuto+github url;
-   audio defaults to NBT_AUDIO_MODE=browser -> ConnectionMaster 0xb8 mixer path,
-   which bypasses the audioconn 0xc7 CMCommand failure we kept hitting)
-6. Replug phone. WATCH: `grep -nE "TLS record|decrypt|Frame RX|Streaming" $AA/nbt-usb13.log`
+   Do NOT set NBT_USB_CLAIM_DRIVER=0 (removed 2026-11-03). The default claim
+   (upstream 0f5ea3d, car-verified on the Supra) keeps devc-serusb-aoap from
+   ever starting, so no /dev/oap node exists for NbtMediaMainApp to steal from.
+   =0 falls back to stop-after-start: the stock driver creates /dev/oap*, the
+   media app can open it during the grace window — the exact root cause again.
+   (identity envs not needed — both builds default to Android/Android Auto +
+   github url; audio defaults to NBT_AUDIO_MODE=browser -> ConnectionMaster 0xb8
+   mixer path, which bypasses the audioconn 0xc7 CMCommand failure we kept hitting)
+6. Replug phone. WATCH:
+   `grep -nE "claimed /|claim not effective|switch to accessory|SppUuid|\[Wireless\]|TLS record|decrypt|Frame RX|Streaming" $AA/nbt-usb$N.log`
+   First check: `[UsbDirect] claimed ...` must appear (if `claim not effective`,
+   note it — the race is back) and `pidin | grep serusb-aoap` must be empty.
+   SPP check: if the FIRST `SppUuidRegister response` shows GapErrorCode=5
+   (already registered), something registered AndroidAuto before us. Hypothesis:
+   the autostarted release /opt/aa/nbt-aad from boot (kill -9 in step 3 does
+   not deregister). Test once by booting with /var/opt/aa/autostart moved away.
 
 SUCCESS = TLS records >6 keep decrypting (ch12/13/14 opens respond),
 video frames arrive ('Streaming Media Frame'), HU screen shows AA.
@@ -41,7 +60,7 @@ FAILURE A (records still drop) = slay NbtMediaMainApp for the test window
 FAILURE B (0 bytes again) = phone-side: delete 'BMW nnnnn' AA vehicle entry
 AGAIN (it re-caches), force-stop AA app, replug.
 
-DIAGNOSTIC GRAB if it fails: pull nbt-usb13.log + `adb logcat -d -v time >
+DIAGNOSTIC GRAB if it fails: pull nbt-usb$N.log + `adb logcat -d -v time >
 ~/aa-logcat3.txt` on the phone (WiFi-ADB over hotspot; wireless debugging may
 need re-enabling). Compare record counts both sides.
 
