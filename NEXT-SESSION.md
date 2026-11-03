@@ -51,7 +51,11 @@ $AA/$BIN >$AA/nbt-usb$N-stdout.log 2>&1 &
    SPP check: if the FIRST `SppUuidRegister response` shows GapErrorCode=5
    (already registered), something registered AndroidAuto before us. Hypothesis:
    the autostarted release /opt/aa/nbt-aad from boot (kill -9 in step 3 does
-   not deregister). Test once by booting with /var/opt/aa/autostart moved away.
+   not deregister; the boot wrapper /opt/aa/nbt-aad runs a wireless-mode daemon).
+   Test once by booting with /var/opt/aa/autostart moved away. NOTE: that boot
+   also skips the wrapper's mm-renderer + knockd starts: knock will not answer
+   (use the bavarian/diag unlock or keep autostart) and mm-renderer must be
+   started by hand first (start-aa.sh step 1).
 
 SUCCESS = TLS records >6 keep decrypting (ch12/13/14 opens respond),
 video frames arrive ('Streaming Media Frame'), HU screen shows AA.
