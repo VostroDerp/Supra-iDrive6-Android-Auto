@@ -23,9 +23,8 @@
       completes TLS and starts video. If it fails, run 13's prediction changes. ~15 min.
 - [ ] USER: phone paired for wireless adb (`adb pair` / `adb connect`) on a network the laptop also reaches
       from the car (phone hotspot works). Otherwise `run` can't collect logcat.
-- [ ] USER: the fallback is ready **before any reboot tonight**: BM3 dongle in the OBD port, laptop internet,
-      the bavarian unlock (`id5/tools/legacy/hu.sh unlock`) known to work. It's the way back if the HMI or
-      knockd fails after a reboot.
+- [ ] USER: laptop internet available in the car (phone hotspot over Wi-Fi, while the ENET cable is plugged in).
+      The stock fallback (`car.sh fallback unlock`) needs it to reach the unlock relay. No BM3 dongle needed.
 - [ ] USER: note the phone state (AA data wiped? car entry in AA settings? USB preference?).
 
 ### B1. Car setup (MUST, ~10 min)
@@ -38,6 +37,11 @@
       `$C push $V/sshd_config.v2 /var/opt/aa/sshd_config.v2`.
 - [ ] Stage NbtService (no plugin dir yet): `$C sh 'mkdir -p /var/opt/aa/stage/NbtService'`, then push the five
       files from `$V/NbtService/` there (`libNbtService.so` under the name `NbtService`, as its README says).
+- [ ] **Fallback drill, before any reboot** (stock path over ENET, nothing of ours involved):
+      `$C fallback status` -> `$C fallback probe` (read-only) -> `$C fallback unlock` -> `$C fallback sh 'hostname'`.
+      Proves the way back works over the cable. The stock SSH it opens closes again at the next reboot.
+      If it fails: no reboots tonight (B5–B8 skipped), only no-reboot blocks.
+- [ ] Push the Wi-Fi sender: `$C push id5/tools/wifi/mwu-send /var/opt/aa/mwu-send` (built, host-tested).
 - [ ] Back up what B5/B6 change: `$C sh 'cp /var/opt/aa/knockd /var/opt/aa/knockd.v1; cp /var/opt/aa/knock.conf /var/opt/aa/knock.conf.v1; cp /var/opt/aa/sshd_config /var/opt/aa/sshd_config.v1'`.
 
 ### B2. Read-only recon (MUST, ~5 min, changes nothing)
@@ -48,7 +52,8 @@
       insertStateID -> menu, so we know the Settings (or My Vehicle) value.
 - [ ] Our sshd accepts the v2 config: `$C sh '/usr/sbin/sshd -t -f /var/opt/aa/sshd_config.v2test && echo OK'`
       (old OpenSSH may reject an option; fix the config before B4 if so).
-- [ ] Wi-Fi state, for the wireless goal: `$C sh 'ifconfig uap0; ifconfig wfd0; pidin ar | grep -i -E "wlan|mwud|wpa|hostap|acpd"'`.
+- [ ] Wi-Fi state, for the wireless goal: `$C sh 'ifconfig uap0; ifconfig wfd0; pidin ar | grep -i -E "wlan|mwud|wpa|hostap|acpd|scp"'`
+      and `$C sh 'ls -l /opt/conn/bin/mwud /opt/conn/bin/mwu_dev.conf /opt/conn/bin/wifidirect_defaults.conf'`.
 - [ ] Firmware/I-level string for a future `requirements.md` row: `$C sh 'ls /etc/*ver* /fs/sda0/*ver* 2>/dev/null'`
       and read what's there. If nothing obvious, iDrive's software version screen (USER, photo).
 - [ ] `$C pull` the 0e output into `id5/local/recon/improve-2026-11-03.txt` (or pipe it there).
@@ -88,7 +93,7 @@
 - [ ] Reboot the HU (hold the power button ~30 s). After iDrive is up: `$C knock` -> v2 knock accepted, login works.
 - [ ] `$C sh 'tail -20 /var/opt/aa/knock.log'`: v2 start line, ALLOW_NETS, sshd started, and the window closes
       after 900 s (check later in the session; `car.sh` re-knocks by itself).
-- [ ] If it fails: fallback unlock, then restore the `.v1` copies from B1 and reboot.
+- [ ] If it fails: `$C fallback unlock`, then restore the `.v1` copies from B1 and reboot.
 
 ### B6. NbtService plugin (MUST if B5 passed, ~20 min; fallback ready; riskiest, so last of the MUSTs)
 - [ ] Recon (B2) confirmed `/var/opt/hmi/data/ID5/Plugins` exists/is used? If yes, install there (recovery =
@@ -104,7 +109,7 @@
 
 ### B7. Prove the plugin arms the gate on its own (IF TIME, one reboot)
 - [ ] `$C sh 'mv /var/opt/aa/autostart /var/opt/aa/autostart.off'` -> reboot. The AA wrapper doesn't run, so if
-      `$C knock` works, NbtService started knockd (A1 proven). Fallback if not: toggle in the plugin, else the unlock.
+      `$C knock` works, NbtService started knockd (A1 proven). If not: toggle in the plugin, else `$C fallback unlock`.
 - [ ] Same boot, the open hypothesis: is the AndroidAuto SPP record still registered with no AA daemon running?
       (`sdptool`-style check from the laptop or the daemon log at its next manual start: GapErrorCode=5 or not.)
 - [ ] Restore: `mv /var/opt/aa/autostart.off /var/opt/aa/autostart` (takes effect next boot; start AA from the menu now).
@@ -114,10 +119,25 @@
       `make -C id5/tools/nbtservice test car`, push the XML (and the .so only if rebuilt), reboot, check the row.
       Not found / doesn't show -> My Vehicle anchor, else back to Media/Radio.
 
-### B9. Exploration (IF TIME, read-only)
-- [ ] USER: does iDrive offer a Wi-Fi hotspot or Wi-Fi settings menu at all (issue #12 mentions a hotspot option)? Photo.
-- [ ] `$C sh 'grep -n -i -E "wlan|wifi|uap|hostap" /opt/conn/etc/*.cfg 2>/dev/null | head -40'`: which Wi-Fi
-      processes the CarPlay package would start. Input for asking tom-pryor about his unpublished IPC PoC (#12).
+### B9. Wi-Fi: the car's own AP (IF TIME; needs >= 30 min; method in `id5/tools/wifi/README.md`)
+Goal: find out **why** the AP doesn't stay up, with evidence, rather than getting it up once more. Treat
+Devin's notes as leads only.
+- [ ] Two laptop terminals for the whole block: `id5/tools/wifi/beacon-watch.sh 'NBTAA|DIRECT-'` (is it on air?)
+      and `id5/tools/wifi/hu-watch.sh` (HU Wi-Fi processes + uap0/wfd0, changes only).
+- [ ] W1 observe stock, 2 min, no changes: mwud running? scp? uap0 flags? any beacon?
+- [ ] W2 zero-code (USER at the screen): the hidden service menu (hold MENU ~10 s) for WLAN/hotspot entries;
+      any Wi-Fi or hotspot menu in Settings (issue #12 mentions a hotspot option). Photos.
+- [ ] W3 mwud direct (the old blocker was the BM3 dongle dropping UDP; `mwu-send` runs on the HU now):
+      start the stock mwud if it isn't running (README step 4, new log file), then
+      `$C sh '/var/opt/aa/mwu-send cmd=ap_init iface=uap0 ssid=NBTAA-TEST key=<8+ chars> auth=0020 encrypt=0008'`
+      and `... cmd=ap_start iface=uap0`. Record both replies. Watch >= 5 min.
+- [ ] W4 for each GONE: what does hu-watch show at that second (new pid, process gone, ifconfig change)? The
+      next attempt changes only that (e.g. `slay scp` first, if scp's mwud replaced ours). Max 3 attempts.
+- [ ] W5 if a beacon holds >= 5 min: phone joins it? (DHCP 172.16.224.x?) Note it. AA over it is a later
+      session (iap2.cfg + daemon on uap0).
+- [ ] Pull `id5/local/wifi/` logs + the HU's `mwud-*.log`, `sloginfo`. Questions for tom-pryor (#12) from
+      what we saw.
+- [ ] A reboot puts Wi-Fi back to stock. Do it before B10 if anything was slain or started.
 
 ### B10. Wrap-up (MUST, ~5 min)
 - [ ] Final state: release daemon autostart restored, knockd (v1 or v2, whichever passed) answering, NbtService

@@ -4,7 +4,7 @@
 # Path (proven 2026-11-02): laptop on ENET -> knock.py signs knockd's challenge (dwc0:851)
 # -> knockd spawns sshd on :3804 (key-only; with knockd v1 until the HU reboots, with v2 for the
 # knock window, OPEN_S in knock.conf) -> plink with
-# ~/.ssh/nbt_knock.ppk. hu.sh remains the fallback for the bavarian / BM3 path only.
+# ~/.ssh/nbt_knock.ppk. The stock way in over ENET is `car.sh fallback`; legacy/hu.sh is only for the old BM3 dongle path.
 #
 # Usage:
 #   car.sh knock                    knock (only if :3804 is not already open)
@@ -17,6 +17,11 @@
 #                                   pidin / fds / dev nodes / sloginfo, binary sizes, phone logcat (if adb
 #                                   sees a device), then prints the stage summary
 #   car.sh stages <log>             stage summary of a daemon log (how far a USB session got)
+#   car.sh fallback status|probe|unlock|sh '<cmd>'|login
+#                                   the STOCK way in, over the ENET cable (no BM3 dongle, no hu.sh): the online
+#                                   FDAC unlock via the diag node (DIAG_IP, jacinto, :6801; needs laptop internet),
+#                                   then the stock sshd on :22 with the generic password. Stock path only: our
+#                                   knockd/sshd are not involved. Commands land on hu-omap (via QNET from jacinto).
 #   car.sh run <N> <bin> [K=V ...]  one USB test run: kill leftovers, clear logcat, launch /var/opt/aa/<bin>
 #                                   with the runbook env (+ K=V extras), ask for the phone, follow the log
 #                                   until media frames / session end / RUN_WAIT_S (90), then collect N.
@@ -189,6 +194,44 @@ case "$cmd" in
             case "$st" in *ByeByeRequest*|*"closed after"*) echo "[run $N] the session ended"; break ;; esac
         done
         "$0" collect "$N"
+        ;;
+    fallback)
+        DIAG=${DIAG_IP:-169.254.199.99}          # jacinto: HSFZ 6801 (the diag target, ECU 0x63)
+        PW=${STOCK_PW:-'ts&SK412'}               # upstream's published generic root password (install.md)
+        UNLOCK="$ID5/tools/legacy/nbt-ssh-unlock.py"
+        # plink without -batch, answering 'y' once to the unknown host key (the stock sshd's key is not ours).
+        sp() { local ip=$1; shift; echo y | "$PLINK" -ssh -pw "$PW" -P 22 "root@$ip" "$@"; }
+        stock_ip() { local ip; for ip in "$HU_IP" "$DIAG"; do port_open "$ip" 22 && { echo "$ip"; return 0; }; done; return 1; }
+        sub=${1:-status}; [ $# -gt 0 ] && shift
+        case "$sub" in
+            status)
+                port_open "$DIAG" 6801 && echo "diag      $DIAG:6801 open (unlock possible)" || echo "diag      $DIAG:6801 closed"
+                for ip in "$HU_IP" "$DIAG"; do
+                    port_open "$ip" 22 && echo "stock ssh $ip:22 open" || echo "stock ssh $ip:22 closed"
+                done ;;
+            probe)                               # read-only: fetch the challenge twice, no server involved
+                python3 "$UNLOCK" "$DIAG" --probe ;;
+            unlock)
+                stock_ip >/dev/null && { echo "stock ssh already open on $(stock_ip):22"; exit 0; }
+                port_open "$DIAG" 6801 || die "diag node $DIAG:6801 not reachable (ENET cable? DIAG_IP?)"
+                python3 "$UNLOCK" "$DIAG" || die "unlock failed (laptop internet? relay up?)"
+                for _ in $(seq 1 20); do stock_ip >/dev/null && break; sleep 1; done
+                ip=$(stock_ip) || die "unlock reported done but no :22 on $HU_IP or $DIAG after 20 s"
+                echo "stock ssh open on $ip:22 (until the HU reboots)" ;;
+            sh)
+                [ $# -ge 1 ] || die "usage: car.sh fallback sh '<remote cmd>'"
+                ip=$(stock_ip) || die "no stock ssh on :22 (car.sh fallback unlock first)"
+                if [ "$ip" = "$HU_IP" ]; then sp "$ip" "$*"
+                else
+                    case "$*" in *\'*) die "commands run through QNET on jacinto must not contain single quotes" ;; esac
+                    sp "$ip" "on -f /net/hu-omap /bin/sh -c '$*'"
+                fi ;;
+            login)
+                ip=$(stock_ip) || die "no stock ssh on :22 (car.sh fallback unlock first)"
+                [ "$ip" = "$HU_IP" ] || echo "landed on jacinto ($ip): run 'on -f /net/hu-omap /bin/sh' for the omap side"
+                exec "$PLINK" -ssh -t -pw "$PW" -P 22 "root@$ip" ;;
+            *) die "usage: car.sh fallback status|probe|unlock|sh '<cmd>'|login" ;;
+        esac
         ;;
     stages)
         [ $# -eq 1 ] || die "usage: car.sh stages <daemon log>"

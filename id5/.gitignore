@@ -14,3 +14,5 @@
 # Session artifacts, in case a tool is run from inside id5/
 nbt-unlock-*.json
 mgrecon*.json
+/tools/wifi/mwu-send
+/tools/wifi/mwu-send-host
