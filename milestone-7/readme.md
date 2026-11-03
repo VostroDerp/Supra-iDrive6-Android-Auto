@@ -847,7 +847,12 @@ make rhmiapp    # only the iDrive app
 - The iDrive app needs `libAppFramework.A.so` and `libCoreFramework.A.so` from the firmware dump's
   `opt/hmi/ID5/lib`, copied into `rhmiapp/lib/`.
 
-Host tests in `tests/` build with a Linux g++ (WSL is fine):
+Host tests in `tests/` build with a Linux g++ (WSL is fine). From `milestone-7/`, `make -C tests -j8` builds and runs
+all of them with `-std=gnu++98` (what the car's GCC 4.4.2 accepts). A second run only repeats tests whose code
+changed. `make -C tests list` shows the `src/` files each test links. A new `test_*.cpp` is picked up on its own;
+if it links code from `src/`, add a `SRC_<test>` line in `tests/Makefile`. `test_session_lifecycle` also runs under
+ThreadSanitizer when `libtsan` is installed. The iDrive app is compiled as a host library. `rhmiapp_host_test` is
+not run, because its fake framework predates the current plugin ABI.
 
 | Test | Covers |
 |---|---|
