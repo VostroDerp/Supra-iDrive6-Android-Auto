@@ -28,7 +28,8 @@ Shorthands:
       settings? USB preference? (these changed results before)
 
 ### 0b. Car setup (once)
-1. `$C status` -> `$C knock` (sshd :3804 stays up until the HU reboots).
+1. `$C status` -> `$C knock` (sshd :3804 stays up until the HU reboots with knockd v1; with v2
+   it closes again after OPEN_S, and car.sh re-knocks on its own when :3804 is shut).
 2. Deploy (push size-checks, keeps +x):
    `$C push $U/nbt-aad-usb5-vanilla /var/opt/aa/nbt-aad-usb5`  (pr42 @ d7ba352, 556253 B)
    `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 6207f6c, 557117 B)

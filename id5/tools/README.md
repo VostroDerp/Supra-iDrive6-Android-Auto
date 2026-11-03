@@ -6,6 +6,7 @@ Laptop-side tools for the BMW NBT Evo ID5 work. None of this is upstream materia
 |---|---|---|
 | `car/` | `car.sh`: knock, shell, push/pull, `collect`/`stages`/`run` for car tests. `start-aa.sh`: manual AA bring-up on the HU (mm-renderer + daemon) | Daily |
 | `knock/` | knockd (our SSH gate, runs on the HU) + `knock.py` client + `genkey.sh` | Daily, via car.sh |
+| `nbtservice/` | `libNbtService.so`: the iDrive plugin that starts knockd at boot and holds the "SSH (15 min)" toggle (A1 + A5). Host-tested, not on the car yet | Install once |
 | `hu-install/` | What is deployed on the HU under `/var/opt/aa/` (wrapper, env, sshd_config, knock.conf, plugin XML) | Reference + redeploy |
 | `recon/` | Read-only HU state dumps (`recon-full.sh`, `recon-knock.sh` via car.sh; `*-recon.sh`, `probe-ap.sh` run on the HU) | As needed |
 | `desk-rig/` | Linux test rig: our AA session code against a real phone over USB, at the desk | Before car tests |

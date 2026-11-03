@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- NbtService: one entry row that opens one page with the "SSH (15 min)" toggle and a status row.
+     PLACEMENT: insertStateID below is the ONLY thing to change when the iDrive menu recon
+     (NEXT-SESSION 0e) finds a Settings or My Vehicle anchor that ID5 accepts (IMPROVEMENT-PLAN A5
+     prefers Settings, then My Vehicle, then here).
+       insertStateID="20"       = Media/Radio, the one anchor already proven on this car
+       insertAfterFocusID="2270" = the same row NbtAad follows; applicationWeight 201 (NbtAad is 200)
+                                   should put us after the Android Auto row. NOT verified on the car;
+                                   if the order comes out wrong, try insertAfterFocusID="32752"
+                                   (NbtAad's own entryButtonFocusID).
+     entryButtonFocusID must not collide with NbtAad's 32752. -->
+<pluginApps>
+  <pluginApp applicationType="Custom" applicationWeight="201" entryButtonFocusID="32751" insertAfterFocusID="2270" insertStateID="20" text="NBT Service">
+    <comment/>
+    <entryButton action="5" id="1" model="3" imageModel="4">
+      <properties/>
+    </entryButton>
+    <actions>
+      <hmiAction id="5" target="10"/>
+      <raAction id="24"/>
+    </actions>
+    <models>
+      <textIdModel id="3" textId="1">
+        <synonyms/>
+      </textIdModel>
+      <imageIdModel id="4" imageId="55101"/>
+      <raBoolModel id="34"/>
+      <textIdModel id="35" textId="10">
+        <synonyms/>
+      </textIdModel>
+      <textIdModel id="32" textId="20">
+        <synonyms/>
+      </textIdModel>
+    </models>
+    <hmiStates>
+      <hmiState id="10" text="NBT Service" textModel="3">
+        <components>
+          <checkbox action="24" id="64" model="34" text="SSH (15 min)" textModel="35"/>
+          <!-- Status row: not selectable (property 2), its text comes from textIdModel 32. -->
+          <button id="62" model="32" text="SSH: closed">
+            <properties>
+              <property id="2" value="false"/>
+            </properties>
+          </button>
+        </components>
+      </hmiState>
+    </hmiStates>
+  </pluginApp>
+</pluginApps>

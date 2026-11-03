@@ -441,6 +441,7 @@ static int write_sshd_conf(const char *base, const char *out, in_addr_t *addrs, 
 }
 
 static pid_t sshd_pid = 0;
+static pid_t pf_pid = 0;                /* one-shot PFCMD child, reaped in the main loop */
 static long  window_until = 0;          /* mono() seconds; 0 = closed */
 
 static int sshd_alive(void) {
@@ -450,8 +451,10 @@ static int sshd_alive(void) {
     return 0;
 }
 
-static void reap_sshd(void) {
+/* Children are ours to collect: SIGCHLD is SIG_DFL (C4), so nothing is auto-reaped. */
+static void reap_children(void) {
     int st = 0;
+    if (pf_pid > 0 && waitpid(pf_pid, NULL, WNOHANG) == pf_pid) pf_pid = 0;
     if (sshd_pid <= 0) return;
     if (waitpid(sshd_pid, &st, WNOHANG) == sshd_pid) {
         klog("sshd pid %d exited (status %d)", (int)sshd_pid,
@@ -478,7 +481,7 @@ static int start_sshd(void) {
     int argc, i, fidx = -1, n, rc;
     pid_t pid;
 
-    reap_sshd();
+    reap_children();
     if (sshd_alive()) return 0;                       /* C4: never a second sshd */
     if (!conf_cmd[0]) { klog("no SSHCMD configured"); return -1; }
 
@@ -547,18 +550,27 @@ static void open_window(long secs, const char *why) {
     klog("SSH window %s for %ld s (%s)", was_open ? "extended" : "open", secs, why);
 }
 
-/* Close the window: SIGTERM the listener. Established sessions are separate
- * processes and keep running (A3) — only new connections are refused. */
+/* Close the window: SIGTERM the listener and collect it, so no zombie is left behind every
+ * time the window closes. Established sessions are the listener's own children, are not
+ * signalled, and keep running (A3) — only new connections are refused. */
 static void close_window(const char *why) {
     window_until = 0;
-    reap_sshd();
-    if (sshd_alive()) {
-        if (kill(sshd_pid, SIGTERM) == 0)
-            klog("SSH window closed (%s): SIGTERM to sshd pid %d; open sessions keep running", why, (int)sshd_pid);
-        else
-            klog("SSH window closed (%s): cannot signal sshd pid %d: %s", why, (int)sshd_pid, strerror(errno));
-    } else {
+    reap_children();
+    if (!sshd_alive()) {
         klog("SSH window closed (%s): no tracked sshd listener", why);
+        sshd_pid = 0;
+        return;
+    }
+    if (kill(sshd_pid, SIGTERM) != 0) {
+        klog("SSH window closed (%s): cannot signal sshd pid %d: %s", why, (int)sshd_pid, strerror(errno));
+        sshd_pid = 0;
+        return;
+    }
+    klog("SSH window closed (%s): SIGTERM to sshd pid %d; open sessions keep running", why, (int)sshd_pid);
+    if (wait_child(sshd_pid, 20) == CHILD_RUNNING) {      /* 1 s, then insist */
+        kill(sshd_pid, SIGKILL);
+        if (wait_child(sshd_pid, 10) == CHILD_RUNNING)
+            klog("sshd pid %d still has not exited after SIGKILL", (int)sshd_pid);
     }
     sshd_pid = 0;
 }
@@ -793,6 +805,7 @@ int main(int argc, char **argv) {
         if (tokenize(conf_pfcmd, store, sizeof store, pargv, 32) > 0) {
             pid_t pid = spawn_argv(pargv);
             int rc = pid < 0 ? -1 : wait_child(pid, 40);
+            if (rc == CHILD_RUNNING) pf_pid = pid;        /* collected by the main loop */
             klog("PFCMD %s -> rc %d%s", conf_pfcmd, rc,
                  rc == CHILD_RUNNING ? " (still running)" : "");
         }
@@ -804,7 +817,7 @@ int main(int argc, char **argv) {
         long now, left = 60;
         int maxfd = s, r;
 
-        reap_sshd();
+        reap_children();
         if (bad_count && time(NULL) - bad_first >= BAD_WINDOW) bad_flush();
         now = mono();
         if (window_until && now >= window_until) close_window("window expired");

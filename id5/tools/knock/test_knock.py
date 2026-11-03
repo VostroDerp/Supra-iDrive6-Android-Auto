@@ -125,6 +125,14 @@ class Daemon:
             except OSError:
                 pass
 
+    def zombies(self):
+        """Children of the daemon left unreaped."""
+        out = []
+        for p in self.pids():
+            r = sh("ps", "-o", "pid=,stat=", "--ppid", str(p))
+            out += [l for l in r.stdout.splitlines() if "Z" in l.split()[-1]]
+        return out
+
     def logtext(self):
         try:
             with open(self.log) as f:
@@ -314,6 +322,12 @@ def main():
             gone = wait_for(lambda: not d.stub_pids(), 20)
             check("sshd stopped when the window expired", gone, d.logtext()[-300:])
             check("window closure logged", "window expired" in d.logtext())
+            # the SIGTERMed listener must be collected, or every window close leaks a zombie
+            check("no zombie left by the closed window", not d.zombies(), str(d.zombies()))
+            d.knock()
+            check("the window can be opened again afterwards",
+                  wait_for(lambda: bool(d.stub_pids()), 5))
+            check("still no zombies after a second cycle", not d.zombies(), str(d.zombies()))
         finally:
             d.stop()
 

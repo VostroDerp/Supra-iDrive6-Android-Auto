@@ -4,7 +4,9 @@
 
 # Build outputs of our tools
 /tools/knock/knockd
+/tools/knock/knockd-host
 /tools/knock/test_knockd
+/tools/nbtservice/libNbtService.so
 /tools/desk-rig/build/
 *.o
 *.d

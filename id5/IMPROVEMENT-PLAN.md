@@ -20,15 +20,24 @@ Build order: C1+C2 (lockout / disk-fill bugs), then A2 + A3 + the rest of C (kno
 host-tested), then A1 (own boot hook), then A5 (toggle). Each is its own car step, verified
 on a cold boot before the old path is removed.
 
-### A1. P1 — Separate SSH access from the AA wrapper — APPROVED 2026-11-03
+**Implementation status 2026-11-03: A1, A2, A3, A5, A8 and all of C are written and
+host-tested; none of it has been on the car.** knockd v2 is `id5/tools/knock/` (42 checks in
+`test_knock.py`, cross-built static for ARMv7LE); the NbtService plugin is
+`id5/tools/nbtservice/` (host test drives the plugin against a real knockd; cross-built, and
+every framework symbol it imports was checked against the car's own libAppFramework /
+libCoreFramework). Both READMEs carry the car step and the list of what is still unverified.
+Car order: knockd v2 first (one step, cold-boot check), then the plugin (one step, with the
+FDAC unlock ready as the way back).
+
+### A1. P1 — Separate SSH access from the AA wrapper — APPROVED 2026-11-03, BUILT (option a, not car-tested)
 Today: HMI loads the NbtAad plugin -> plugin sees `/var/opt/aa/autostart` -> launches the
 wrapper `nbt-aad.sh` -> the wrapper starts knockd. Anything that breaks that chain also
 removes SSH: a wrapper edit, autostart moved aside (planned for one hypothesis test), or the
 plugin's boot guard latching autostart off after 3 crash-boots in 15 min.
 
 Options:
-- **a. A small dedicated PluginApp ("NbtService")** that only starts knockd when HmiMain3D
-  loads it. It doesn't depend on the AA app, its autostart flag or its boot guard. It is
+- **a. A small dedicated PluginApp ("NbtService")** — CHOSEN, built 2026-11-03 — that only
+  starts knockd when HmiMain3D loads it. It doesn't depend on the AA app, its autostart flag or its boot guard. It is
   also the natural home for A5 (the iDrive SSH toggle). Recommended.
   Risk: a broken plugin can crash HmiMain3D at boot. Mitigations:
   - keep it minimal, with no work in the constructor;
@@ -44,7 +53,7 @@ Precondition: never remove the old path until the new one has been seen working 
 boot. For a while, both may start knockd: the second one fails to bind and exits, which is
 harmless.
 
-### A2. P1 — Restrict which networks can reach knockd and sshd (allowlist) — APPROVED 2026-11-03
+### A2. P1 — Restrict which networks can reach knockd and sshd (allowlist) — APPROVED 2026-11-03, BUILT (not car-tested)
 Today, knockd binds `INADDR_ANY` and `sshd_config` has `ListenAddress 0.0.0.0`. "ENET-only"
 is not true: the BM3 dongle's Wi-Fi reaches dwc0, and so would `uap0` (the car's own AP)
 and `wfd0` once they are up.
@@ -72,7 +81,7 @@ CarPlay ports to AP clients. So **TCP 851/3804 over uap0 also needs a pf anchor 
 have to load it at start). Recon (read-only, NEXT-SESSION 0e): `ifconfig -a`,
 `pfctl -s rules`, `pfctl -s Anchors`.
 
-### A3. P1 — Open window + idle timeout — APPROVED 2026-11-03 (idle timeout required)
+### A3. P1 — Open window + idle timeout — APPROVED 2026-11-03, BUILT (not car-tested)
 Today, sshd stays up from the first knock until reboot.
 
 New behaviour:
@@ -87,7 +96,7 @@ In sshd_config:
 - `LoginGraceTime 30`.
 - Optionally, an idle-shell timeout through `TMOUT` in the session environment.
 
-### A5. P2 — iDrive menu toggle "SSH for 15 minutes" — APPROVED 2026-11-03, placement to decide
+### A5. P2 — iDrive menu toggle "SSH for 15 minutes" — APPROVED 2026-11-03, BUILT (placement still to decide)
 Being in the car is the authorization: the toggle opens the A3 window directly, with no knock.
 sshd itself stays key-only.
 - Mechanism: the plugin sends `open` to knockd on a 127.0.0.1 UDP port (or writes a flag
@@ -108,16 +117,20 @@ sshd itself stays key-only.
   NEXT-SESSION 0e recon.
   Inside the entry: "SSH (15 min)" checkbox + remaining time; later status, Restart AA,
   Copy logs to USB.
+  Built 2026-11-03 as `id5/tools/nbtservice/`: the checkbox and a status row with the
+  remaining time in four buckets (iDrive takes row text from the text DB by id, so a
+  formatted string is not possible). `insertStateID="20"` (Media/Radio) is the only
+  attribute to change after the recon. Restart AA and Copy logs to USB are not built.
 - Not in upstream's NbtAad app: that would be a local patch we'd have to carry forever.
 
-### A8. P2 — `PermitRootLogin without-password` in OUR sshd_config — APPROVED 2026-11-03
+### A8. P2 — `PermitRootLogin without-password` in OUR sshd_config — APPROVED 2026-11-03, BUILT (not car-tested)
 It applies only to our sshd (`-f /var/opt/aa/sshd_config`, :3804). The stock dropbear on :22
 and the FDAC unlock with the generic password are not affected. It ships with the knockd v2
 sshd_config (A3).
 
 ---
 
-## C. knockd.c review findings — ALL APPROVED 2026-11-03 (id5-dev `id5/tools/knock/knockd.c`)
+## C. knockd.c review findings — ALL APPROVED 2026-11-03, ALL FIXED in knockd v2 (not car-tested)
 
 Sound: fresh 32-byte nonce from `/dev/urandom`, `RSA_verify` with SHA-256 and e=65537,
 fail-safe exits when the config or key is missing, SIGPIPE ignored, daemonises after bind
@@ -131,7 +144,7 @@ so the wrapper's retry loop works.
 | C4 | P2 | `system()` together with `SA_NOCLDWAIT`: `system()`'s `waitpid` can fail with ECHILD, so the `SSHCMD rc` log line is unreliable. Every valid knock also runs `sshd` again, even when it is already up | Spawn sshd as a child knockd tracks (also needed for A3); skip if its pid is alive |
 | C5 | P2 | The signature covers only `SHA256(nonce)`, with no context (protocol, HU identity). Not exploitable as is. Combined with the A4 key reuse it is the kind of thing that turns into a problem later | v2 protocol: sign `"nbt-knock-v2" ‖ hu-id ‖ nonce`; keep v1 accepted until knock.py moves over |
 | C6 | P3 | Stale docs: the header and the `conf_port` default say 46610 (the deployed value is 851). `RSA_FLAG_NO_CONSTTIME` on the hex path is pointless for a public key (harmless). `send()` has no timeout | Tidy along with the v2 work |
-| C7 | P3 | No host test | Host build + a test with a throwaway key: good / bad / short / slow signature, off-allowlist peer, log cap |
+| C7 | P3 | No host test | Host build + a test with a throwaway key: good / bad / short / slow signature, off-allowlist peer, log cap. Done: `test_knock.py`, 42 checks, plus a `Makefile` (the car build line was nowhere recorded) |
 
 ---
 

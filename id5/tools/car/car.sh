@@ -2,7 +2,8 @@
 # car.sh — head-unit access over ENET through the knockd gate (replaces hu.sh for daily use).
 #
 # Path (proven 2026-11-02): laptop on ENET -> knock.py signs knockd's challenge (dwc0:851)
-# -> knockd spawns sshd on :3804 (key-only, stays up until the HU reboots) -> plink with
+# -> knockd spawns sshd on :3804 (key-only; with knockd v1 until the HU reboots, with v2 for the
+# knock window, OPEN_S in knock.conf) -> plink with
 # ~/.ssh/nbt_knock.ppk. hu.sh remains the fallback for the bavarian / BM3 path only.
 #
 # Usage:
