@@ -16,6 +16,10 @@
 #                                   pidin / fds / dev nodes / sloginfo, binary sizes, phone logcat (if adb
 #                                   sees a device), then prints the stage summary
 #   car.sh stages <log>             stage summary of a daemon log (how far a USB session got)
+#   car.sh run <N> <bin> [K=V ...]  one USB test run: kill leftovers, clear logcat, launch /var/opt/aa/<bin>
+#                                   with the runbook env (+ K=V extras), ask for the phone, follow the log
+#                                   until media frames / session end / RUN_WAIT_S (90), then collect N.
+#                                   RUN_MMR_CONF=0 leaves out AOI_CONFIG + MM_RENDERER_CONFIG (PR #65 run).
 #
 # sh/push/pull/login knock first when :3804 is closed.
 # Env: HU_IP (169.254.199.119), SSH_PORT (3804), KNOCK_PORT (851), KNOCK_PPK (~/.ssh/nbt_knock.ppk),
@@ -145,6 +149,45 @@ case "$cmd" in
         fi
         echo "collected into $out:"; ls -l "$out" | tail -n +2 | awk '{printf "  %8s  %s\n", $5, $9}'
         [ -f "$out/nbt-usb$N.log" ] && { echo "stages (nbt-usb$N.log):"; stages "$out/nbt-usb$N.log"; }
+        ;;
+    run)
+        [ $# -ge 2 ] || die "usage: car.sh run <N> <bin on HU, e.g. nbt-aad-usb5> [KEY=VALUE ...]"
+        N=$1; BIN=$2; shift 2
+        case "$N" in *[!0-9]*|'') die "run number must be a number" ;; esac
+        case "$BIN" in */*|*' '*|'') die "bin is a file name in /var/opt/aa, e.g. nbt-aad-usb5" ;; esac
+        for kv in "$@"; do case "$kv" in [A-Z_]*=*) ;; *) die "extra env must be KEY=VALUE: $kv" ;; esac; done
+        [ -e "$LOCAL/recon/run-$N" ] && die "$LOCAL/recon/run-$N exists (pick a new run number)"
+        knock || exit 1
+        AA=/var/opt/aa; LOG=$AA/nbt-usb$N.log
+        [ -n "$(remote_size "$AA/$BIN")" ] || die "$AA/$BIN is not on the HU (car.sh push it first)"
+        [ -n "$(remote_size "$LOG")" ] && die "$LOG already exists on the HU (pick a new run number)"
+        echo "[run $N] killing leftover nbt-aad / devc-serusb-aoap"
+        run 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done; for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done' >/dev/null 2>&1
+        if command -v adb >/dev/null && [ "$(adb get-state 2>/dev/null)" = device ]; then
+            adb logcat -c && echo "[run $N] phone logcat cleared"
+        else
+            echo "[run $N] no adb device: the phone side will not be collected"
+        fi
+        MMR="AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf"
+        [ "${RUN_MMR_CONF:-1}" = 0 ] && MMR=""
+        ENVS="NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0 NBT_LOG_FILE=$LOG NBT_VERBOSE=1 $MMR"
+        ENVS="$ENVS LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:/fs/sda0/opt/conn/lib/carplay:/opt/sys/lib $*"
+        echo "[run $N] launching $AA/$BIN"
+        echo "         env: $ENVS"
+        # All three fds redirected so the non-interactive session can return while the daemon keeps running.
+        run "$ENVS $AA/$BIN </dev/null >$AA/nbt-usb$N-stdout.log 2>&1 &" || die "launch failed"
+        sleep 3
+        run "pidin ar | grep -v grep | grep -q '$AA/$BIN'" || die "$BIN is not running 3 s after launch: see $AA/nbt-usb$N-stdout.log"
+        echo "[run $N] $BIN is running. PLUG THE PHONE IN NOW. Following the log for up to ${RUN_WAIT_S:-90} s (Ctrl-C stops waiting)."
+        t=0; last=""
+        while [ "$t" -lt "${RUN_WAIT_S:-90}" ]; do
+            sleep 3; t=$((t + 3))
+            st=$(run "cat '$LOG'" 2>/dev/null | grep -oE 'connected to io-usb|switch to accessory mode sent|\[UsbDirect\] accessory [0-9a-f]{4}:|VersionResponse:|TLS Handshake Complete|Failed to decrypt|Streaming Media Frame|ByeByeRequest from the phone|closed after' | sort | uniq -c | tr -s ' ' | tr '\n' ';')
+            [ "$st" != "$last" ] && { echo "  ${t}s: ${st:-nothing yet}"; last=$st; }
+            case "$st" in *"Streaming Media Frame"*) echo "[run $N] media frames: give it a moment, then check the screen"; sleep 5; break ;; esac
+            case "$st" in *ByeByeRequest*|*"closed after"*) echo "[run $N] the session ended"; break ;; esac
+        done
+        "$0" collect "$N"
         ;;
     stages)
         [ $# -eq 1 ] || die "usage: car.sh stages <daemon log>"

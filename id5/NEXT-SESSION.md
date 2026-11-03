@@ -43,11 +43,22 @@ Shorthands:
 
 ### 0c. Per run (N = 13, 14, ...)
 1. Prediction written in the run log below (what stage we expect to reach, why).
-2. Kill leftovers:
+2. Unplug the phone. Then one command does the rest:
+   `$C run $N nbt-aad-usb5`  (extra env as `KEY=VALUE` after the binary; `RUN_MMR_CONF=0 $C run ...`
+   leaves out AOI_CONFIG/MM_RENDERER_CONFIG for the PR #65 run)
+   It kills leftover nbt-aad / devc-serusb-aoap, clears the phone logcat (adb), launches
+   `/var/opt/aa/<bin>` with the standard env below, checks it is still alive after 3 s, says
+   **PLUG THE PHONE IN NOW**, follows the log (media frames / session end / 90 s, `RUN_WAIT_S`),
+   then runs `collect $N` -> `id5/local/recon/run-$N/` + stage table. It refuses a run number
+   that already exists locally or on the HU.
+   The detached launch over non-interactive SSH is **not car-verified yet**. If run 13 says
+   "not running 3 s after launch", use the manual steps below and note it here.
+3. Fill in the run log.
+
+Manual fallback (what `run` does):
    `$C sh 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done'`
    `$C sh 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done'`
-3. Unplug phone. `adb logcat -c` (clean phone log per run).
-4. Launch from `$C login` (paste; BIN + N set per run):
+   `adb logcat -c`, then from `$C login`:
 ```
 AA=/var/opt/aa; CP=/fs/sda0/opt/conn; BIN=nbt-aad-usb5; N=13
 NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0 \
@@ -56,11 +67,11 @@ AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf \
 LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:$CP/lib/carplay:/opt/sys/lib \
 $AA/$BIN >$AA/nbt-usb$N-stdout.log 2>&1 &
 ```
-   Never NBT_USB_CLAIM_DRIVER=0: it lets devc-serusb-aoap start and create /dev/oap*,
-   which NbtMediaMainApp reads from — the root cause. Identity envs not needed
-   (default Android / Android Auto). Audio defaults to browser mode (0xb8 mixer).
-5. Wait ~5 s, plug the phone in, wait ~30 s (or until AA shows / clearly fails).
-6. `$C collect $N` -> recon/run-$N/ + stage table. Fill in the run log.
+   then plug the phone in, wait ~30 s, `$C collect $N`.
+
+Never NBT_USB_CLAIM_DRIVER=0: it lets devc-serusb-aoap start and create /dev/oap*,
+which NbtMediaMainApp reads from — the root cause. Identity envs not needed
+(default Android / Android Auto). Audio defaults to browser mode (0xb8 mixer).
 
 ### 0d. Decision tree (read the stage table top-down; first 0 or bad row decides)
 - `claim NOT effective` > 0, or no `driver path claimed` -> the race is back.

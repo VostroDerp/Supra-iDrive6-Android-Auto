@@ -157,7 +157,7 @@ the follow-up list as a precaution.
   list? service discovery accepted? video starts? Every ID5 USB failure so far except the
   QNX-only part (driver claim, io-usb, NbtMediaMainApp stealing) was on that list. The same
   program on TCP covers wireless protocol work. A test tool upstream could use too.
-- **E1b. `car.sh run <N> <bin>` — APPROVED, in progress.** One command that kills leftovers, clears logcat, launches
+- **E1b. `car.sh run <N> <bin>` — DONE 2026-11-03** (stub-tested; the detached launch is not car-verified yet). One command that kills leftovers, clears logcat, launches
   with the standard env, prints "plug the phone in", waits until a stage is reached or
   60 s pass, then runs `collect N`. Run time goes from about 5 min of pasting to about 1 min.
 - **E1c. Batch each car session** (practice, no code). Prepare the run list with branches in advance (the
