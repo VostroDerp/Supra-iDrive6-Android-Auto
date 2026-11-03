@@ -12,6 +12,10 @@
 #   car.sh pull <remote> [local]    copy a file from the HU (default: recon/<basename>)
 #   car.sh login                    interactive shell
 #   car.sh status                   is the HU reachable, is knockd / sshd answering
+#   car.sh collect <N>              after test run N: recon/run-N/ gets the daemon logs (nbt-usbN*.log),
+#                                   pidin / fds / dev nodes / sloginfo, binary sizes, phone logcat (if adb
+#                                   sees a device), then prints the stage summary
+#   car.sh stages <log>             stage summary of a daemon log (how far a USB session got)
 #
 # sh/push/pull/login knock first when :3804 is closed.
 # Env: HU_IP (169.254.199.119), SSH_PORT (3804), KNOCK_PORT (851), KNOCK_PPK (~/.ssh/nbt_knock.ppk),
@@ -43,6 +47,32 @@ knock() {
 
 # Remote file size in bytes from `ls -l` (the HU has no stat / wc).
 remote_size() { run "ls -l '$1'" 2>/dev/null | awk 'NR==1 {print $5}'; }
+
+# USB session stages in order (PR #42 log strings). The first stage with 0 hits is where the run stopped.
+stages() {
+    local log=$1 n label pat
+    [ -f "$log" ] || die "no log $log"
+    while IFS='|' read -r label pat; do
+        n=$(grep -cE -- "$pat" "$log")
+        printf '  %-28s %5s   %s\n' "$label" "$n" "$(grep -m1 -E -- "$pat" "$log" | cut -c1-110)"
+    done <<'EOF'
+driver path claimed|\[UsbDirect\] claimed /
+claim NOT effective (race!)|claim not effective
+io-usb connected|connected to io-usb
+USB device seen|\[UsbDirect\] USB device
+switch to accessory sent|switch to accessory mode sent
+accessory enumerated|\[UsbDirect\] accessory [0-9a-f]{4}:
+bridge open|open: starting Android Auto over USB
+BT parked (vanilla)|phone on the USB cable
+SPP register/deregister|SppUuid(Register|Deregister) response
+VersionResponse|VersionResponse:
+TLS handshake complete|TLS Handshake Complete
+decrypt FAILURES|Failed to decrypt
+media frames|Streaming Media Frame
+phone ByeBye|ByeByeRequest from the phone
+bridge closed|closed after .* bytes from the phone
+EOF
+}
 
 cmd=${1:-}
 [ $# -gt 0 ] && shift
@@ -77,6 +107,42 @@ case "$cmd" in
         [ "$got" -ge "$want" ] || die "short copy: remote $want, local $got ($dst)"
         echo "pulled $1 -> $dst ($got bytes)"
         ;;
+    collect)
+        [ $# -eq 1 ] || die "usage: car.sh collect <run number>"
+        N=$1; out=$HERE/recon/run-$N
+        [ -e "$out" ] && die "$out exists (pick a new run number)"
+        mkdir -p "$out"; knock || exit 1
+        {
+            echo "run $N collected $(date -Is) from $HU_IP"
+            echo "HU date: $(run date 2>/dev/null)"
+            echo "--- HU binaries (match sizes to the local builds below)"
+            run 'ls -l /var/opt/aa/nbt-aad*' 2>&1
+            echo "--- local builds"
+            ls -l "${USB_TREE:-$HERE/../../../Supra-iDrive6-Android-Auto-usb}"/milestone-7/nbt-aad-usb* 2>/dev/null
+        } > "$out/meta.txt"
+        for f in nbt-usb$N.log nbt-usb$N-stdout.log; do
+            if [ -n "$(remote_size "/var/opt/aa/$f")" ]; then
+                run "cat '/var/opt/aa/$f'" > "$out/$f"
+            else
+                echo "  (no /var/opt/aa/$f on the HU)"
+            fi
+        done
+        run 'pidin ar' > "$out/pidin-ar.txt" 2>&1
+        run 'pidin fds' > "$out/pidin-fds.txt" 2>&1
+        run 'ls -l /dev/android* /dev/oap* /dev/btspp* 2>&1' > "$out/dev-nodes.txt" 2>&1
+        run 'sloginfo' > "$out/sloginfo.txt" 2>&1
+        if command -v adb >/dev/null && [ "$(adb get-state 2>/dev/null)" = device ]; then
+            adb logcat -d -v threadtime > "$out/logcat.txt" 2>&1 && echo "  phone logcat: $(wc -l < "$out/logcat.txt") lines"
+        else
+            echo "  (no adb device: phone logcat not collected)"
+        fi
+        echo "collected into $out:"; ls -l "$out" | tail -n +2 | awk '{printf "  %8s  %s\n", $5, $9}'
+        [ -f "$out/nbt-usb$N.log" ] && { echo "stages (nbt-usb$N.log):"; stages "$out/nbt-usb$N.log"; }
+        ;;
+    stages)
+        [ $# -eq 1 ] || die "usage: car.sh stages <daemon log>"
+        stages "$1"
+        ;;
     login)
         knock && exec "$PLINK" -ssh -t -i "$PPK" -P "$SSH_PORT" "root@$HU_IP"
         ;;
@@ -86,7 +152,7 @@ case "$cmd" in
         port_open "$SSH_PORT" && echo "sshd      :$SSH_PORT open" || echo "sshd      :$SSH_PORT closed (knock first)"
         ;;
     *)
-        sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,/^set -u/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
         [ -z "$cmd" ] || exit 1
         ;;
 esac

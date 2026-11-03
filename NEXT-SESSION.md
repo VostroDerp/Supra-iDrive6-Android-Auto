@@ -1,35 +1,43 @@
 # Next car session — ordered checklist
 
-## 0. [ ] TOMORROW: USB-AA direct-mode test (read first — the whole session is one test)
+## 0. [ ] USB-AA direct-mode test — structured (rewritten 2026-11-03 night)
 
-Overnight = clean stock boot: stock SPP bait re-registered at boot, usb3
-binary persists at /var/opt/aa/nbt-aad-usb3 (kill-bait + NBT_SSL_CIPHERS env +
-NBT_USB_{MANUFACTURER,MODEL,URL} envs). Phone AA data is wiped (clean slate).
+Rules: ONE change per run. Write the prediction BEFORE the run. `collect` after
+EVERY run, pass or fail. Two runs failing at the same stage = stop and re-plan,
+don't stack another tweak. Note: usb11/usb12 never ran direct mode (no
+`connected to io-usb`, sessions on stock /dev/oap013) — the root-cause fix
+(direct + driver claim) has NOT been car-tested on the ID5 yet; run 13 is its first.
 
-SEQUENCE:
-Access = `tools/ssh-vetting/car.sh` (knock + plink key, auto-knocks when :3804
-is closed; `car.sh` alone prints usage). Below: `C=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto/tools/ssh-vetting/car.sh`
-1. Reach + knock: `$C status` (ping / knockd :851 / sshd :3804), then `$C knock`.
-2. Interactive shell when needed: `$C login`. One-shots: `$C sh '<cmd>'`.
-3. Kill leftovers:
+Shorthands:
+`C=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto/tools/ssh-vetting/car.sh`
+`U=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb/milestone-7`
+
+### 0a. Pre-flight (laptop, before going to the car)
+- [ ] PR #42 moved? `cd $U/.. && git fetch upstream pull/42/head && git log --oneline pr42..FETCH_HEAD`
+      New commits -> read them, rebuild vanilla (and rebase pr42-id5), re-run host
+      tests, re-stage. Same tip (d7ba352) -> keep the staged binaries.
+- [ ] Host tests green on what we deploy (2026-11-03: vanilla test_usb_accessory /
+      test_session_owner / test_usb_log pass; patched passes with its protocol-2 assert).
+- [ ] Phone logcat path: phone + laptop on one Wi-Fi (not the car's), Wireless
+      debugging on -> `adb pair` / `adb connect <ip:port>`; `adb get-state` = device.
+      Without it, collect skips logcat — the phone side is half the evidence.
+- [ ] Record phone state: AA app data wiped since last run? 'BMW nnnnn' entry in AA
+      settings? USB preference? (these changed results before)
+
+### 0b. Car setup (once)
+1. `$C status` -> `$C knock` (sshd :3804 stays up until the HU reboots).
+2. Deploy (push size-checks, keeps +x):
+   `$C push $U/nbt-aad-usb5-vanilla /var/opt/aa/nbt-aad-usb5`  (pr42 @ d7ba352, 556253 B)
+   `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 6207f6c, 557117 B)
+3. Note whether the boot-autostarted daemon is running: `$C sh 'pidin ar | grep nbt-aad'`.
+
+### 0c. Per run (N = 13, 14, ...)
+1. Prediction written in the run log below (what stage we expect to reach, why).
+2. Kill leftovers:
    `$C sh 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done'`
    `$C sh 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done'`
-4. Deploy BOTH builds (push size-checks and keeps +x):
-   `U=~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb/milestone-7`
-   `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 6207f6c, rebuilt 2026-11-03 01:02, 557117 B)
-   `$C push $U/nbt-aad-usb5-vanilla /var/opt/aa/nbt-aad-usb5`  (pr42 @ d7ba352, pure upstream PR tip, 556253 B)
-   Logs back: `$C pull /var/opt/aa/nbt-usb$N.log` (lands in tools/ssh-vetting/recon/).
-   ORDER: try usb5 (vanilla) FIRST — upstream's own flow may suffice now;
-   if phone still chases wireless bait, switch to usb4 (kill-bait deregisters
-   the 'AndroidAuto' SPP record and never registers it in USB mode).
-   Vanilla tell: log line `[Wireless] phone on the USB cable: Bluetooth links are
-   left alone` + phone logcat WIRELESS_SETUP_WPP_VERSION_REQUEST_TIMEOUT loop =
-   vanilla parks BT (main.cpp:917) while the phone waits on WPP -> go to usb4.
-   usb4 rebuild (2026-11-03): cipher default is upstream's list again
-   (NBT_SSL_CIPHERS still overrides; CBC pinning was disproved in usb12);
-   build objects dropped from the branch; kill-bait no longer logs "registering again".
-5. Launch DIRECT mode (no shared /dev/oap — media app can't steal records).
-   Set BIN to the build under test (usb5 first, then usb4) and bump N per run:
+3. Unplug phone. `adb logcat -c` (clean phone log per run).
+4. Launch from `$C login` (paste; BIN + N set per run):
 ```
 AA=/var/opt/aa; CP=/fs/sda0/opt/conn; BIN=nbt-aad-usb5; N=13
 NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0 \
@@ -38,45 +46,49 @@ AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf \
 LD_LIBRARY_PATH=/fs/sda0/opt/sys/lib:/fs/sda0/opt/mm/lib:$CP/lib/carplay:/opt/sys/lib \
 $AA/$BIN >$AA/nbt-usb$N-stdout.log 2>&1 &
 ```
-   Do NOT set NBT_USB_CLAIM_DRIVER=0 (removed 2026-11-03). The default claim
-   (upstream 0f5ea3d, car-verified on the Supra) keeps devc-serusb-aoap from
-   ever starting, so no /dev/oap node exists for NbtMediaMainApp to steal from.
-   =0 falls back to stop-after-start: the stock driver creates /dev/oap*, the
-   media app can open it during the grace window — the exact root cause again.
-   (identity envs not needed — both builds default to Android/Android Auto +
-   github url; audio defaults to NBT_AUDIO_MODE=browser -> ConnectionMaster 0xb8
-   mixer path, which bypasses the audioconn 0xc7 CMCommand failure we kept hitting)
-6. Replug phone. WATCH:
-   `grep -nE "claimed /|claim not effective|switch to accessory|SppUuid|\[Wireless\]|TLS record|decrypt|Frame RX|Streaming" $AA/nbt-usb$N.log`
-   First check: `[UsbDirect] claimed ...` must appear (if `claim not effective`,
-   note it — the race is back) and `pidin | grep serusb-aoap` must be empty.
-   SPP check: if the FIRST `SppUuidRegister response` shows GapErrorCode=5
-   (already registered), something registered AndroidAuto before us. Hypothesis:
-   the autostarted release /opt/aa/nbt-aad from boot (kill -9 in step 3 does
-   not deregister; the boot wrapper /opt/aa/nbt-aad runs a wireless-mode daemon).
-   Test once by booting with /var/opt/aa/autostart moved away. NOTE: that boot
-   also skips the wrapper's mm-renderer + knockd starts: knock will not answer
-   (use the bavarian/diag unlock or keep autostart) and mm-renderer must be
-   started by hand first (start-aa.sh step 1).
+   Never NBT_USB_CLAIM_DRIVER=0: it lets devc-serusb-aoap start and create /dev/oap*,
+   which NbtMediaMainApp reads from — the root cause. Identity envs not needed
+   (default Android / Android Auto). Audio defaults to browser mode (0xb8 mixer).
+5. Wait ~5 s, plug the phone in, wait ~30 s (or until AA shows / clearly fails).
+6. `$C collect $N` -> recon/run-$N/ + stage table. Fill in the run log.
 
-SUCCESS = TLS records >6 keep decrypting (ch12/13/14 opens respond),
-video frames arrive ('Streaming Media Frame'), HU screen shows AA.
-FAILURE A (records still drop) = slay NbtMediaMainApp for the test window
-(reversible, reboot restores): `slay NbtMediaMainApp` then re-run step 4-5.
-FAILURE B (0 bytes again) = phone-side: delete 'BMW nnnnn' AA vehicle entry
-AGAIN (it re-caches), force-stop AA app, replug.
+### 0d. Decision tree (read the stage table top-down; first 0 or bad row decides)
+- `claim NOT effective` > 0, or no `driver path claimed` -> the race is back.
+  Record it, check `pidin-fds.txt` for oap holders; do NOT debug TLS this run.
+- No `io-usb connected` -> direct mode not active (NBT_USB_DIRECT typo, or
+  `needs QNX io-usb` in the log). Fix setup, rerun. (libusbdi is present: the
+  binary links it and would not start without it.)
+- No `USB device seen` / `switch to accessory sent` -> phone not seen or not asked:
+  `dev-nodes.txt`, phone USB mode, cable. Not a code problem yet.
+- Switch sent but no `accessory enumerated` -> phone refused accessory mode.
+  logcat: CAR.SETUP / UsbAccessory lines ("Accessory is not valid"?).
+- `bridge open` but VersionResponse 0 -> phone not talking AAP on USB.
+  If `BT parked (vanilla)` > 0 and logcat shows WPP VERSION_REQUEST_TIMEOUT loops ->
+  the phone is doing wireless setup over BT instead -> NEXT RUN: usb4 (kill-bait),
+  same everything else. Otherwise phone-side: forget car in AA, force-stop, replug.
+- TLS complete but `decrypt FAILURES` > 0 in direct mode -> NEW finding (stealing
+  should be impossible). Keep the log; next run unchanged once to check it repeats;
+  then `slay NbtMediaMainApp` run (reboot restores) to rule the media app in/out.
+- `media frames` > 0 and AA on screen -> SUCCESS. Same run: note video, touch, knob,
+  audio (browser mode), call audio; then unplug/replug once (reconnect is a known
+  PR weak spot). Then: post results to PR #42.
 
-DIAGNOSTIC GRAB if it fails: pull nbt-usb$N.log + `adb logcat -d -v time >
-~/aa-logcat3.txt` on the phone (WiFi-ADB over hotspot; wireless debugging may
-need re-enabling). Compare record counts both sides.
+### Run log (one line per run; prediction BEFORE, result AFTER)
+| N  | binary | change vs previous | prediction | furthest stage | decision |
+|----|--------|--------------------|------------|----------------|----------|
+| 13 | usb5   | first direct+claim run | reaches TLS; no decrypt failures if claim holds; may stall at VersionResponse if phone does BT WPP | | |
 
-Root cause banked in id5.md: stock OAPReaderThread steals /dev/oap transfers;
-TLS implicit seq -> 1 lost record = bad-record-mac forever, both directions.
-DIRECT mode is the designed fix (io-usb hands transfers in order, no node).
+### Open hypotheses (test only when the tree points at them)
+- First `SppUuidRegister response` GapErrorCode=5 = something registered
+  AndroidAuto before us — probably the boot-autostarted release daemon (kill -9
+  does not deregister). Test: boot with /var/opt/aa/autostart moved away. That
+  boot also skips the wrapper's knockd + mm-renderer: knock will not answer
+  (menu Start or bavarian unlock), mm-renderer must be started by hand (start-aa.sh step 1).
 
-## 1. [ ] SSH-independence recon (while unlocked — HIGH, gates all future work)
+Root cause (id5.md §13): stock OAPReaderThread steals /dev/oap transfers; TLS
+implicit seq -> 1 lost record = bad-record-mac forever. Direct mode + claim is the fix.
 
-## 1. [ ] SSH-independence recon (while unlocked — HIGH, gates all future work)
+## 1. [x] SSH-independence — DONE 2026-11-02 via knockd (1a); 1b/1c optional, kept for reference
 
 Context: unlock = UDS FD2E challenge (random per request — ~41 saved sessions
 all differ, replay dead) → FD2F RSA-2048 signature (asymmetric — HU only holds
@@ -218,6 +230,12 @@ hu.sh sh './NmeCmdLine 2>&1 | head -20'            # usage probe
 - [ ] pidin shows which processes map it (engine live or dormant)
 
 ## 4. uAP path — wireless without dongle (fallback ladder)
+
+User correction 2026-11-03: the HU Wi-Fi antenna IS fitted — the AP was seen on the
+phone at several points but never stayed up (persistence is the problem, not RF).
+Before more reversing: read upstream issue #12 (tom-pryor, also no CarPlay, has an
+IPC PoC for enabling Wi-Fi without CarPlay) and ask him. With SSH on ENET, mwud is
+reachable via `plink -L` port forwards — no pdebug/gdb injection needed any more.
 
 Only if USB fails or for the wireless endgoal. Order = least custom code first.
 
