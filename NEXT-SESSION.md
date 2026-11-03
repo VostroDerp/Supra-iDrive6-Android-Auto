@@ -13,12 +13,13 @@ SEQUENCE:
 3. Kill leftovers:
    `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*nbt-aad.*/\1/p"); do kill -9 $p; done`
    `for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done`
-4. Deploy fresh build nbt-aad-usb4 (PR42-tip + our patches: kill-bait,
-   Android-identity defaults, cipher env; adds browser-audio path +
-   wireless-release when USB gives up):
-   `plink ... 'cat > /var/opt/aa/nbt-aad-usb4' < milestone-7/nbt-aad`
-   from ~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb (branch pr42-id5)
-   then `chmod +x /var/opt/aa/nbt-aad-usb4`.
+4. Deploy BOTH builds from ~/Desktop/Projects/BMW/Supra-iDrive6-Android-Auto-usb:
+   `cat > /var/opt/aa/nbt-aad-usb4` < milestone-7/nbt-aad-usb4-patched  (PR42+patches)
+   `cat > /var/opt/aa/nbt-aad-usb5` < milestone-7/nbt-aad-usb5-vanilla (pure upstream)
+   chmod +x both.
+   ORDER: try usb5 (vanilla) FIRST — upstream's own flow may suffice now;
+   if phone still chases wireless bait, switch to usb4 (kill-bait deregisters
+   our stale 'AndroidAuto' SPP record).
 5. Launch DIRECT mode (no shared /dev/oap — media app can't steal records):
 ```
 AA=/var/opt/aa; CP=/fs/sda0/opt/conn
