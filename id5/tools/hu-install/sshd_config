@@ -1,13 +1,35 @@
+# OUR sshd only: knockd starts it as `sshd -f this-file -D`. The stock dropbear
+# on :22 and the FDAC unlock with the generic password are untouched by anything
+# in here.
 Port 3804
-ListenAddress 0.0.0.0
+# No ListenAddress here on purpose: knockd writes a copy of this file with one
+# ListenAddress per address in knock.conf ALLOW_NETS (sshd_config.active) and
+# starts sshd on that. Without the copy sshd would listen on every interface,
+# including the BM3 dongle's bridged Wi-Fi.
 Protocol 2
 HostKey /etc/ssh/ssh_host_rsa_key
 HostKey /etc/ssh/ssh_host_dsa_key
-PermitRootLogin yes
+# Root is the only account on the HU. "without-password" states what
+# PasswordAuthentication no already enforces: keys only, never a password.
+PermitRootLogin without-password
 PasswordAuthentication no
 PubkeyAuthentication yes
+# No second password-style path (the old default for these was yes).
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
 AuthorizedKeysFile /var/opt/aa/authorized_keys
+# Off because the QNX directories on the path to authorized_keys are not
+# root-owned 0700 (IMPROVEMENT-PLAN F3 moves the file, then this can go on).
 StrictModes no
+# Privsep needs an "sshd" user and an empty root-owned chroot; /etc/passwd is
+# read-only on the HU (F3). knockd's gate + the allowlist + the open window are
+# what make that acceptable.
 UsePrivilegeSeparation no
 PermitUserEnvironment yes
+# Drop dead sessions (cable pulled, HU slept) after 3 missed 60 s probes, so a
+# session cannot outlive its usefulness and hold the port.
+ClientAliveInterval 60
+ClientAliveCountMax 3
+# Half a minute to authenticate, then the connection goes.
+LoginGraceTime 30
 PidFile /var/opt/aa/sshd.pid

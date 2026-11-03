@@ -6,12 +6,52 @@ PORT=851
 # PEM public key verifying knock signatures (REQUIRED).
 PUBKEY=/var/opt/aa/knock.pub
 
-# Command run on a valid knock — the SSH bring-up (REQUIRED; fill after recon
-# finds the stock dropbear path/args). Examples (verify paths on the HU!):
-#   SSHCMD=/fs/sda0/usr/sbin/dropbear -R -s
-#   SSHCMD=/usr/sbin/sshd -f /var/opt/aa/sshd_config -p 22222
-# If stock dropbear needs the FDAC flag instead of a binary spawn, put the
-# equivalent local action here once identified (e.g. touch a flag + start).
-SSHCMD=/usr/sbin/sshd -f /var/opt/aa/sshd_config
+# Command run on a valid knock (REQUIRED). Split on spaces — no quoting.
+# The listener must stay in the FOREGROUND so it is knockd's own child and the
+# open window can stop it again: -D for sshd (knockd adds it if the command ends
+# in "sshd"), -F for dropbear.
+# If the command has "-f <path>", that file is a template: knockd writes a copy
+# with one "ListenAddress" line per allowed local address (ALLOW_NETS) and runs
+# sshd on the copy.
+SSHCMD=/usr/sbin/sshd -f /var/opt/aa/sshd_config -D
+SSHD_CONF_OUT=/var/opt/aa/sshd_config.active
 
+# Append log, truncated with a marker line once it passes LOG_MAX bytes. A
+# scanner can reach the knock port, so the log must not be able to fill /var.
 LOG=/var/opt/aa/knock.log
+LOG_MAX=65536
+
+# Which of the HU's own networks may knock. knockd binds 0.0.0.0 (addresses show
+# up late at boot) and checks the LOCAL address of each accepted socket instead.
+#   169.254.0.0/16   ENET link-local (the laptop on the OBD port)
+#   172.16.224.0/24  the car's own AP (uap0)
+# Deliberately NOT the BM3 dongle's DHCP range: the dongle's Wi-Fi is bridged
+# onto the same interface as ENET, so anyone who joins it could otherwise knock.
+# Empty = allow every local address (the old v1 behaviour).
+ALLOW_NETS=169.254.0.0/16,172.16.224.0/24
+
+# How long sshd stays reachable after a knock, then knockd SIGTERMs the
+# listener. Sessions already established are separate processes and keep running.
+OPEN_S=900
+
+# Overall deadline for one knock connection. Without it a client that dribbles
+# one byte at a time holds the single accept slot and blocks real knocks.
+CONN_S=8
+
+# UDP 127.0.0.1 control port: "open [secs]", "close", "status". This is how the
+# iDrive "SSH (15 min)" toggle opens the window without a knock. 0 disables it.
+CTL_PORT=52791
+
+# Protocol v2 identity: the signature covers "nbt-knock-v2" || HU_ID || nonce.
+# A short label, NOT derived from the VIN. knock.py takes it from the daemon.
+HU_ID=nbt-id5
+
+# Keep accepting v1 signatures (over the bare nonce) while an old knock.py may
+# still be in use. Set 0 once every client is on v2.
+ACCEPT_V1=1
+
+# Optional: load a pf anchor at start so the car's own AP can reach these ports
+# (the stock filter_OBD anchor already passes them on dwc0, so ENET needs
+# nothing). pfctl -a is not persistent, hence running it here. NOT YET VERIFIED
+# on the car — leave commented until the pf recon is done.
+#PFCMD=/sbin/pfctl -a filter_nbtaad -f /var/opt/aa/pf.nbtaad

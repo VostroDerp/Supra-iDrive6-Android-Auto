@@ -1,0 +1,9 @@
+# pf rules for an anchor loaded by knockd (PFCMD), so the car's own AP can reach
+# the knock and SSH ports. Deploy as /var/opt/aa/pf.nbtaad.
+#
+# NOT VERIFIED on the car yet (IMPROVEMENT-PLAN A2 recon: pfctl -s rules,
+# pfctl -s Anchors). The stock default is "block drop all"; the filter_OBD anchor
+# already passes 851/3804 on dwc0, and uap0's stock pass list does not include
+# them. Port numbers must match knock.conf PORT and sshd_config Port.
+pass in quick on uap0 proto tcp from any to (uap0) port 851 keep state
+pass in quick on uap0 proto tcp from any to (uap0) port 3804 keep state
