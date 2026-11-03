@@ -7,6 +7,13 @@ starts on its own, so after a reboot there is neither AA nor our SSH. This sessi
 **Charger on from the start**: on 2026-11-03 the HU kept shutting down for low voltage until the engine ran.
 `C`, `U`, `V` as below.
 
+**Priority (owner's choices, 2026-11-03; record in `id5/local/decisions/prio-2026-11-03/`):**
+- Do first, car: N1 (boot wrapper), G1 (GPS recon), W1 (Wi-Fi Direct). Desk: D-73 (#73 groundwork).
+- Next session, car: N2 (NbtService), N3 (knockd v2), AUD (audio over the AA link). Desk: D-RC (reconnect fix),
+  D-WRAP (USB + wireless wrapper, after W1), D-APP (iDrive app to current upstream).
+- Later: W2 (passphrase change), RC (reconnect repro), NAV (nav prompts), B8, B9c, B9d; desk D-IVA, D-72.
+- Dropped: B9 (the car's own hotspot; Wi-Fi Direct replaces it).
+
 ### N0. Getting in after any reboot (until N1 is done)
 Our knockd does NOT start at boot (findings in the 2026-11-03 results below). Every boot:
 1. `$C fallback unlock` (stock FDAC path over ENET, needs laptop internet; fixed in car.sh dfa6ead). It opens the
@@ -79,7 +86,7 @@ encrypted passphrase plus a listener bound to 172.16.224.1; upstream fixed both.
 - [ ] Fails: phone never joins -> wfd_probe/mwud output, is the group beaconing, Miracast coding. Joins but no TCP -> the
       listener address in the log (tcp_server bind line).
 
-### W2. Can the Wi-Fi Direct passphrase be changed? (MUST, ~10 min; with W1)
+### W2. Can the Wi-Fi Direct passphrase be changed? (LATER per owner 2026-11-03, ~10 min)
 The 2 Nov value is effectively public (see Open). Never print or write the decoded passphrase into the repo:
 outputs go to `id5/local/` (gitignored), and `wfd_probe` prints the decoded value, so its output stays there too.
 - [ ] Has it changed since 2 Nov already? Save the car's file locally and compare it with the old capture, without
