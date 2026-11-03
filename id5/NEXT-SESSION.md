@@ -43,15 +43,16 @@ Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-b
 (or NbtService) to start knockd; the original wrapper never did.
 
 ### Open from 2026-11-03
-- **Reconnect bug (upstream main).** After a mid-session drop the daemon reopened the same, still-enumerated
-  accessory without a new AOA switch. The phone kept its old TLS state, so 595 decrypt failures followed until a
+- **Reconnect bug (upstream main).** Trigger (owner, 2026-11-03): iDrive powered down for low battery with the
+  phone plugged in, then was switched back on. QNX and the daemon stayed up (one PID, continuous log clock) and
+  the phone never saw a USB disconnect (logcat), so only the AA link broke ("Phone closed socket or read error").
+  The daemon then reopened the same, still-enumerated accessory without a new AOA switch. The phone kept its old TLS state, so 595 decrypt failures followed until a
   physical replug. Log: `id5/local/recon/run-13/nbt-usb13.log` lines ~576–680 (session end, reopen, records at
   seq 77+ against a fresh ClientHello). Fix idea: when a session ends and the accessory is still there, force a
   re-enumeration (USB reset or close and wait) before the next session. PR #42 is merged, so this would be a new
   upstream issue. File it once it repeats, or with a fix.
-- **Why run 13's first session dropped** after 5.8 s ("Phone closed socket or read error" mid-stream, 4 s after
-  `audioconn -b 0xc7` set up the A2DP connection). Not first-connect setup: run 14 was a first connect too and did
-  not drop. The phone logcat has nothing from the AA app; turn on AA's developer logging before the next runs.
+- Repro for the reconnect bug (charger on): plug in, picture up, iDrive off and on with the power button, phone
+  left plugged in. Expect the same reopen + decrypt failures. Also watch whether an engine crank does it.
 - Nav prompts not tested (Maps sound was off).
 - PR #65 feedback (run 15 works): draft written 2026-11-03, post when the owner OKs it.
 - B2 menu anchors: `/opt/hmi/ID5/data/ro/Plugins` holds only NbtAad, so the stock plugin XMLs are elsewhere.
@@ -409,8 +410,8 @@ and the /var plugin dir exists.
 ### Run log (one line per run; prediction BEFORE, result AFTER)
 | N  | binary | change vs previous | prediction | furthest stage | decision |
 |----|--------|--------------------|------------|----------------|----------|
-| 13 | usb7   | first direct+claim run | reaches TLS; no decrypt failures if claim holds; may stall at VersionResponse if phone does BT WPP | **VIDEO, working AA.** Claim held, GapErrorCode=0, TLS in <1 s. 1st session (first connect, prompts) dropped after 5.8 s ("Phone closed socket or read error" mid-stream); the auto-reconnect reopened the same accessory without a re-switch, the phone kept its old TLS state -> 595 decrypt failures, 125 s, then idle. Replug -> clean session, 371 s, all checks pass (touch, knob, keys, BT media, Assistant, call, iDrive and back, reverse, replug <5 s). Nav prompts not tried (Maps sound off). | USB works on ID5. Next: reconnect bug = re-switch/USB reset after a mid-session drop (upstream issue); why the 1st session dropped (first-connect setup? BT A2DP connect at the same moment). |
-| 14 | usb7   | NBT_VEHICLE=bmw (identity only) | phone sees a NEW car (setup prompts), BMW name + exit icon; same stages as 13; 1st session may drop like 13 if that was first-connect setup | **VIDEO, BMW name + icon.** 1 clean session, 0 decrypt failures, no early drop (so 13's drop was not first-connect setup). | Use NBT_VEHICLE=bmw from now on. |
+| 13 | usb7   | first direct+claim run | reaches TLS; no decrypt failures if claim holds; may stall at VersionResponse if phone does BT WPP | **VIDEO, working AA.** Claim held, GapErrorCode=0, TLS in <1 s. 1st session (first connect, prompts) dropped after 5.8 s ("Phone closed socket or read error" mid-stream); the auto-reconnect reopened the same accessory without a re-switch, the phone kept its old TLS state -> 595 decrypt failures, 125 s, then idle. Replug -> clean session, 371 s, all checks pass (touch, knob, keys, BT media, Assistant, call, iDrive and back, reverse, replug <5 s). Nav prompts not tried (Maps sound off). | USB works on ID5. The 1st drop = iDrive low-battery power-down (owner); QNX/daemon/USB stayed up. Next: reconnect bug = re-switch/USB reset after such a drop (upstream issue). |
+| 14 | usb7   | NBT_VEHICLE=bmw (identity only) | phone sees a NEW car (setup prompts), BMW name + exit icon; same stages as 13; 1st session may drop like 13 if that was first-connect setup | **VIDEO, BMW name + icon.** 1 clean session, 0 decrypt failures, no early drop (13's drop was the low-battery power-down). | Use NBT_VEHICLE=bmw from now on. |
 | 15 | usb8 (main + #65 18d402b) | renderer: ours slain, #65 spawns the factory one (RUN_MMR_CONF=0), NBT_VEHICLE=bmw | `[MMR] Started` = 1, factory paths all present and no carplay.ini -> no 90 s wait; video OK unless the factory conf (playlist engine, RO /etc/mm) breaks on ID5 | **VIDEO, same as 14.** `[MMR] Started` the factory renderer, reachable in 0.5 s, 0 decrypt failures; owner: picture same as before. | PR #65 works on ID5 without our renderer conf: worth reporting on #65. |
 | (after success) | usb6 | renderer: wrapper's -> #65 spawns factory one | `we started (#65)` = 1; video OK unless factory conf breaks on ID5 | | |
 
