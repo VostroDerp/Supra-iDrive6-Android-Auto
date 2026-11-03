@@ -131,6 +131,15 @@ Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-b
   upstream issue. File it once it repeats, or with a fix.
 - Repro for the reconnect bug (charger on): plug in, picture up, iDrive off and on with the power button, phone
   left plugged in. Expect the same reopen + decrypt failures. Also watch whether an engine crank does it.
+- **Fix built (D-RC, 2026-11-03), not car-tested.** Branch `usb-stale-session` (0bfcb12, on upstream main b0ad23d;
+  local only). Every fresh session's first phone transfer is the 12-byte unencrypted VersionResponse on ch 0 (runs
+  13-15); the stale reopen started with encrypted ch 6 video at +0.000 s. The bridge now ends such an opening
+  without passing it on, and with NBT_USB_DIRECT resets the phone's USB (`usbd_reset_device`) as a replug would.
+  Binary: `milestone-7/nbt-aad-usb10-stale` in the -usb worktree (v1.8.80-usbstale = usb9 + the fix).
+  Car test = RC with usb10 instead of usb7 (one variable): expect `the phone is still in an earlier session`,
+  `USB reset done`, then either `accessory ... removed` + a new AOA switch, or a reopen whose `in #0` is
+  `[ch 0 0x03 12]`, and a picture without replugging. If the reset leaves the phone stuck, the log still ends the
+  bad opening at once (bounded by the 3-sessions limit) instead of 2 minutes of decrypt failures.
 - Nav prompts not tested (Maps sound was off).
 - PR #65 (run 15 works): no post (owner: Tom hasn't asked for testers). The result stays in the run log.
 - B2 menu anchors: `/opt/hmi/ID5/data/ro/Plugins` holds only NbtAad, so the stock plugin XMLs are elsewhere.
