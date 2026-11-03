@@ -57,6 +57,22 @@ encrypted passphrase plus a listener bound to 172.16.224.1; upstream fixed both.
 - [ ] Fails: phone never joins -> wfd_probe/mwud output, is the group beaconing, Miracast coding. Joins but no TCP -> the
       listener address in the log (tcp_server bind line).
 
+### W2. Can the Wi-Fi Direct passphrase be changed? (MUST, ~10 min; with W1)
+The 2 Nov value is effectively public (see Open). Never print or write the decoded passphrase into the repo:
+outputs go to `id5/local/` (gitignored), and `wfd_probe` prints the decoded value, so its output stays there too.
+- [ ] Has it changed since 2 Nov already? Save the car's file locally and compare it with the old capture, without
+      printing it: `$C sh 'cat /var/opt/conn/WFDPass.conf' | tr -d '\r\n ' > id5/local/recon/wfdpass-now.txt`, then
+      `grep -c -F -f id5/local/recon/wfdpass-now.txt id5/local/recon/recon9.txt` (1 = same as 2 Nov, 0 = changed).
+      Also `ls -l /var/opt/conn/WFDPass.conf /fs/sda1/opt/conn/WFDPass.conf` (mtime: when it was last written).
+- [ ] Least invasive first, re-checking the file after each step (stop at the first that changes it):
+      1. iDrive: Mobile devices -> remove any screen-mirroring (Miracast) device, then start a new screen-mirroring
+         pairing and cancel it.
+      2. Reboot (does Connectivity generate a new one at start-up?).
+- [ ] If neither changes it: options for the owner, not done in the car. The iDrive "delete personal data" reset
+      (also wipes Bluetooth pairings and profiles), or writing a new encrypted value ourselves (a stock Connectivity
+      file, so it needs a decision first). Pick one at the desk.
+- [ ] Afterwards W1's run still has to work: the daemon reads the file fresh, so a new passphrase needs no change on our side.
+
 ### N2. NbtService (B6 as written, one reboot; then B7)
 Install location: `/var/opt/hmi/data/ID5/Plugins/NbtService` (B6's `mkdir -p` creates `Plugins/`). Upstream's
 readme says HmiMain3D loads `Plugins/<Name>/<Name>.manifest` from `/var/opt/hmi/data/ID5` as well as
@@ -91,9 +107,10 @@ Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-b
 - Firmware/I-level string: no version file found (only `/etc/gps_G6_V7_ver20.cfg`). USER: photo of iDrive's
   software version screen.
 - Not done: B4–B9d (B9c boot-hook and B9d cluster-arrow recon included).
-- The Wi-Fi Direct passphrase's encrypted form is in the public fork history (0bac749, findings.md) and now decodes
-  with upstream's public key. Low risk (pf passes only Miracast ports and DHCP on wfd0). Owner to decide: history
-  rewrite, and/or check in the car whether a new screen-mirroring pairing makes a new passphrase.
+- The Wi-Fi Direct passphrase's encrypted form was in the public fork history (findings.md, from 2 Nov) and decodes
+  with upstream's public key. Redacted from id5-dev and id5-knockd-v2 on 2026-11-03 (history rewritten, owner
+  force-pushes). Old commits can stay reachable on GitHub by ID for a while, so changing the passphrase is the
+  real fix: W2. Low risk meanwhile (pf passes only Miracast ports and DHCP on wfd0).
 
 ## Car session 2026-11-03 (evening) — DONE. Results first, then the checklist as worked.
 
