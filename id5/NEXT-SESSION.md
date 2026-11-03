@@ -16,6 +16,9 @@
 
 ### B0. Before going to the car (desk)
 - [x] PR #42 tip still d7ba352, PR #65 still 18d402b (checked 11:30): the staged binaries are current.
+- [x] PR #42 MERGED 14:05 (merge 1c5c530; main now 2aa91f7 v1.8.72-main-usb, adds A2DP audio default, RAM log, HU
+      version line; nothing on the USB/TLS/video path). Built `$U/nbt-aad-usb7-main` (557894 B) from upstream main 2aa91f7,
+      host tests green (usb_accessory, session_owner, usb_log, car_config, sdr_drop). **Run 13 uses usb7.**
 - [x] Staged: `$U/nbt-aad-usb5-vanilla` (556253 B), `$U/nbt-aad-usb4-patched` (557117 B),
       `$U/nbt-aad-usb6-mmr` (561950 B), and `$V` (knockd v2, its configs, NbtService). Host tests green.
 - [x] Desk-rig run A (12:37): `desk_rig-vanilla` (PR #42 tip d7ba352, protocol 1, identity Android / Android Auto),
@@ -34,7 +37,7 @@
 ### B1. Car setup (MUST, ~10 min)
 - [ ] `$C status` -> `$C knock`. Note the HU date and uptime: `$C sh 'date; uptime 2>/dev/null; pidin info | head -3'`.
 - [ ] Is the autostarted release daemon running? `$C sh 'pidin ar | grep -E "nbt-aad|knockd|mm-renderer"'`.
-- [ ] Push the USB binaries (step 0b.2: usb5, usb4, usb6 under their names).
+- [ ] Push the USB binaries (step 0b.2: usb7, usb5, usb4, usb6 under their names).
 - [ ] Push knockd v2 side by side (nothing replaced yet):
       `$C push $V/knockd /var/opt/aa/knockd.v2`, `$C push $V/knock.conf.v2test /var/opt/aa/knock.conf.v2test`,
       `$C push $V/sshd_config.v2test /var/opt/aa/sshd_config.v2test`, `$C push $V/knock.conf.v2 /var/opt/aa/knock.conf.v2`,
@@ -61,24 +64,33 @@
 - [ ] Firmware/I-level string for a future `requirements.md` row: `$C sh 'ls /etc/*ver* /fs/sda0/*ver* 2>/dev/null'`
       and read what's there. If nothing obvious, iDrive's software version screen (USER, photo).
 - [ ] `$C pull` the 0e output into `id5/local/recon/improve-2026-11-03.txt` (or pipe it there).
+- [ ] IVA-HD recon for renderer option A (IMPROVEMENT-PLAN F9, read-only; ~3 min). Better still in B3 while AA video
+      is on screen (section 5 then lists what mm-renderer loaded to decode); if B3 fails, run it here:
+      `$C push id5/tools/recon/ivahd-recon.sh /var/opt/aa/ivahd-recon.sh`,
+      `$C sh 'sh /var/opt/aa/ivahd-recon.sh > /var/opt/aa/ivahd-recon.txt 2>&1'`, `$C pull /var/opt/aa/ivahd-recon.txt`,
+      then `$C pull /var/opt/aa/ivahd-pull/<name> id5/local/pulled/ivahd/<name>` for each file section 8 lists.
+      It answers: where libdce / TILER / IPC live, which process owns the decoder, the IPU firmware, the screen
+      config (displays, NV12), and the LayerManager screens (also for F10, the cluster).
 
 ### B3. USB Android Auto (MUST, the priority, ~40 min)
-- [ ] Run 13: prediction in the run log first, then `$C run 13 nbt-aad-usb5`. Read the stage table with the
+- [ ] Run 13: prediction in the run log first, then `$C run 13 nbt-aad-usb7`. Read the stage table with the
       decision tree (0d). Each next run changes ONE thing the tree names (usb4 = kill-bait, etc.).
 - [ ] Desk-rig result (B0) vs car result: same stage? If the rig got video and the car didn't, the difference is
       the QNX side (claim, io-usb, NbtMediaMainApp), which is exactly what 0d's direct-mode rows check.
 - [ ] IF SUCCESS, same session, note each one:
       - picture: sharpness and lag;
       - touch, knob (turn, push, tilt), back / MENU keys;
-      - media audio (browser mode), nav prompts, the Assistant (mic), a phone call;
+      - media audio: usb7 defaults to Bluetooth A2DP (phone must be BT-connected to the car); browser audio is
+        its own run with `NBT_AUDIO_MODE=browser`. Nav prompts, the Assistant (mic), a phone call;
       - iDrive and back (MENU key, then the Android Auto entry);
       - reverse gear (camera, then AA back);
       - unplug and replug (reconnect is the PR's known weak spot);
       - time from plug to picture.
 - [ ] IF SUCCESS, separate run: BMW identity. With no CarPlay FSC there is no carplay.ini logo/Manufacturer, so
       car_config.hpp falls back to Toyota (the phone lists the car as Toyota, and Devin's run showed a Toyota exit
-      icon). `$C run <N> nbt-aad-usb5 NBT_VEHICLE=bmw` (extra args go into the env). It also changes the vehicle id, so the phone sees a NEW
+      icon). `$C run <N> nbt-aad-usb7 NBT_VEHICLE=bmw` (extra args go into the env). It also changes the vehicle id, so the phone sees a NEW
       car (setup prompts again, the Toyota entry stays). Not before USB works.
+- [ ] IF SUCCESS, while the picture is up: the IVA-HD recon (B2, last item) if not done yet.
 - [ ] IF SUCCESS: the PR #65 run (0d, last bullet): `slay mm-renderer`, then `RUN_MMR_CONF=0 $C run <N> nbt-aad-usb6`.
       Afterwards restart our renderer (`id5/tools/car/start-aa.sh` step 1) if video stays black.
 - [ ] Leave the release daemon as it was found (kill the test binary; the next boot autostarts the release one).
@@ -178,6 +190,14 @@ Deliverable (laptop, later): a short findings.md note — what the supervisor re
 points read from a writable path, and whether a no-edit hook exists (a stock entry that runs a binary by path
 from a writable location, or a script that sources a drop-in directory). No install, and no restore-kit this trip.
 
+### B9d. Cluster-arrow recon for F10 (IF TIME, READ-ONLY, ~10 min; analysis later on the laptop)
+- [ ] USER: start an iDrive route (parked is fine) so the cluster shows a turn arrow.
+- [ ] `$C push id5/tools/recon/cluster-recon.sh /var/opt/aa/cluster-recon.sh`,
+      `$C sh 'sh /var/opt/aa/cluster-recon.sh > /var/opt/aa/cluster-recon.txt 2>&1'` (section 2 greps binaries:
+      a few minutes), `$C pull /var/opt/aa/cluster-recon.txt`. Sends nothing on MOST or CAN.
+- [ ] It names the processes, configs and MOST function blocks behind the arrows. The MOST capture itself
+      (`test_controls -r -k <FBlock keys found here>` during guidance, observe-only) is for a later session.
+
 ### B10. Wrap-up (MUST, ~5 min)
 - [ ] Final state: release daemon autostart restored, knockd (v1 or v2, whichever passed) answering, NbtService
       kept or disabled. Write down which.
@@ -215,6 +235,7 @@ Shorthands:
 1. `$C status` -> `$C knock` (sshd :3804 stays up until the HU reboots with knockd v1; with v2
    it closes again after OPEN_S, and car.sh re-knocks on its own when :3804 is shut).
 2. Deploy (push size-checks, keeps +x):
+   `$C push $U/nbt-aad-usb7-main /var/opt/aa/nbt-aad-usb7`  (upstream main @ 2aa91f7, 557894 B, run 13)
    `$C push $U/nbt-aad-usb5-vanilla /var/opt/aa/nbt-aad-usb5`  (pr42 @ d7ba352, 556253 B)
    `$C push $U/nbt-aad-usb4-patched /var/opt/aa/nbt-aad-usb4`  (pr42-id5 @ 6207f6c, 557117 B)
    `$C push $U/nbt-aad-usb6-mmr /var/opt/aa/nbt-aad-usb6`      (pr42 + PR #65 18d402b, 561950 B)
@@ -245,7 +266,7 @@ Manual fallback (what `run` does):
    `$C sh 'for p in $(pidin | sed -n "s/^ *\([0-9]*\).*serusb-aoap.*/\1/p"); do kill -9 $p; done'`
    `adb logcat -c`, then from `$C login`:
 ```
-AA=/var/opt/aa; CP=/fs/sda0/opt/conn; BIN=nbt-aad-usb5; N=13
+AA=/var/opt/aa; CP=/fs/sda0/opt/conn; BIN=nbt-aad-usb7; N=13
 NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0 \
 NBT_LOG_FILE=$AA/nbt-usb$N.log NBT_VERBOSE=1 \
 AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf \
@@ -301,7 +322,7 @@ and the /var plugin dir exists.
 ### Run log (one line per run; prediction BEFORE, result AFTER)
 | N  | binary | change vs previous | prediction | furthest stage | decision |
 |----|--------|--------------------|------------|----------------|----------|
-| 13 | usb5   | first direct+claim run | reaches TLS; no decrypt failures if claim holds; may stall at VersionResponse if phone does BT WPP | | |
+| 13 | usb7   | first direct+claim run | reaches TLS; no decrypt failures if claim holds; may stall at VersionResponse if phone does BT WPP | | |
 | (after success) | usb6 | renderer: wrapper's -> #65 spawns factory one | `we started (#65)` = 1; video OK unless factory conf breaks on ID5 | | |
 
 ### Open hypotheses (test only when the tree points at them)

@@ -334,6 +334,59 @@ Left out on purpose: it would cut long `car.sh collect` / `run` sessions short, 
 already drop dead sessions. Review later: maybe a long value (e.g. 2 h), or only for interactive `login`
 shells and not `car.sh sh` commands.
 
+### F9. P2 — Decode Android Auto video on the IVA-HD directly (renderer option A, 2026-11-03)
+Today the daemon feeds H.264 through mm-renderer (CarPlay package). Option A: open the IVA-HD ourselves through
+TI DCE (the car's own libdce, dlopen'ed like the mm-renderer libs today) and post the frames to our screen window.
+Gains: no mm-renderer process or CarPlay files, most of video_manager's workarounds gone (cpvideoctx purge, speed
+seeding, prefetch, per-session rebuild, renderer start), likely coexists with CarPlay, per-frame stats and keyframe
+recovery, and a second concurrent decoder for Android Auto's CLUSTER stream (F10; but the F36 cluster has no known
+video input, so that one only matters for other cars). Not a gain: picture quality (the
+1280x480 panel is already shown 1:1) or much latency (mm-renderer already runs VideoDecoderLowLatencyMode=1).
+Rejected: Cinemo as a player (playback-tuned delays) and Cinemo's AA engine (closed; the engine plugin wasn't in
+the pulled files). Comparison page: `id5/local/docs/renderer-options.html`.
+Order: after USB works, measure touch-to-picture lag; run `id5/tools/recon/ivahd-recon.sh` (B2); if the decoder
+stack is reachable, a standalone test tool first (like test_display), the daemon untouched.
+
+### F10. P2 — Content on the instrument cluster / HUD (F36) (2026-11-03)
+Goal: the Google Maps map from Android Auto's CLUSTER video stream in the cluster; fallback: turn arrows, distance,
+lanes, street name (what upstream does on the J29 over SOME/IP 0xB006, which the F-series doesn't have).
+Research (2026-11-03, web + local recon; nothing car-checked yet):
+- **F30-platform facts** (BMW F30 training doc "Displays, Indicators and Controls", same platform as F36):
+  - The basic cluster (2.7" 320x120, PT-CAN only) is fitted only without 609 Professional nav or 610 HUD.
+  - **6WA** (5.7" 640x160 TFT, on **MOST and PT-CAN**) is required with 609 and 610. NBT Evo is the 609 unit, so this car
+    most likely has a 6WA (or the later 6WB digital cluster). To be confirmed from the FA/VCM or the KOMBI part number.
+  - Nav in the cluster = **arrow display** plus distance/arrival on the computer pages. **No map in the cluster**
+    on F-series is documented anywhere.
+  - HUD (610): the cluster draws the HUD picture and sends it over APIX/LVDS. The HUD content is data-driven, drawn by
+    the cluster, so arrows reaching the KOMBI also reach the HUD.
+- **Map video (Android Auto CLUSTER stream): not feasible on the F36 as far as known.** No video input on the cluster
+  (the APIX link runs cluster to HUD, an output). So F9's second-decoder benefit doesn't apply to this car.
+- **Methods, ranked** (all reuse the NAVIGATION_STATUS data `kombi_nav` already parses for the J29):
+  1. **MOST capture of native guidance, then replay.** The HU sends turn arrows to the KOMBI as asynchronous MOST data (BMW
+     MOST training doc). `ccs_input` already observes MOST (FBlock 0xE5 via `registerDevCtrls`), so the first step is
+     to observe the nav-to-KOMBI messages while an **iDrive route** runs. Then, much later, send our own guidance
+     updates the same way. Confidence med (arrows over MOST), low on the bytes.
+  2. **Feed the HU's own guidance service** (a DSI nav/guidance service the HMI publishes), so the stock path draws
+     the arrows in the cluster and HUD. Confidence low-med. Check: DSI services with Guidance/Kombi in their names.
+  3. **K-CAN / PT-CAN injection.** Rejected: 6WA nav isn't CAN-carried, F-series PT-CAN frames carry CRC + counter,
+     and it's safety traffic.
+  4. **Map video to the cluster.** Rejected for the F36 (no video input known).
+- **Car checks (read-only):**
+  - Start an iDrive route, then `sloginfo -w | grep -i -E 'kombi|guid|route|arrow'`.
+  - `strings` on HmiMain3D for Kombi / RouteGuidance / ManeuverView.
+  - LayerManager screens (`ivahd-recon.sh` section 7).
+  - FA/VCM options via E-sys or ISTA.
+- **Safety:** observe first, send nothing. Later, only guidance updates (never Check Control, warnings or lamps).
+  Clear on disconnect or crash. Stand down while the native nav guides.
+- **Owner answers (2026-11-03):** the cluster has the screen between analogue dials (**6WA**), **no HUD**, and iDrive
+  navigation works and already shows its arrows in the cluster. So the native path exists on this car (method 1 or 2).
+- **Next:** runbook B9d (`id5/tools/recon/cluster-recon.sh`, read-only, during an iDrive route) finds the processes, configs
+  and MOST function blocks behind the arrows. Then, in a later session, an observe-only MOST capture with `test_controls -r
+  -k <those FBlock keys>` during guidance. Caveat: `registerDevCtrls` delivers messages addressed to the HU, and the arrows
+  go out of it, so the capture may only show the cluster's replies. The DSI/HMI side (method 2) may then be the better tap.
+- Sources: F30 displays training PDF (archive.org BMWTechnicalTrainingDocuments ST1113), F01/E70 HUD training PDFs
+  (ST811, ST605), BMW MOST bus training (ST043), bimmerpost thread 1512884 (NAVI_NBT_ENABLE coding lead; unread, 403).
+
 ---
 
 ## D. Other backlog (tidiness, robustness, reliability)
