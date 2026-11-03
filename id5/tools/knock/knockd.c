@@ -638,7 +638,11 @@ static void handle(int c, RSA *rsa, struct sockaddr_in *peer) {
         char lip[INET_ADDRSTRLEN] = "?";
         inet_ntop(AF_INET, &local.sin_addr, lip, sizeof lip);
         bad_note(ip, "off-allowlist local address");
-        klog("dropped %s -> %s: not in ALLOW_NETS=%s", ip, lip, conf_nets);
+        /* Only the first drop of the minute says exactly what happened; the rest are counted
+         * into bad_note's summary. Anyone on a network we do not control lands here, and one
+         * log line per connection is the flash wear C2 is about. */
+        if (bad_count == 1)
+            klog("dropped %s -> %s: not in ALLOW_NETS=%s", ip, lip, conf_nets);
         return;
     }
 

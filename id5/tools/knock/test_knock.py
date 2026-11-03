@@ -310,6 +310,15 @@ def main():
                   "got %r" % first)
             check("off-allowlist: logged with both addresses",
                   "not in ALLOW_NETS" in d.logtext(), d.logtext()[-200:])
+            # a scanner on a network we do not control must not get one log line per connection
+            for _ in range(20):
+                try:
+                    socket.create_connection(("127.0.0.1", d.port), timeout=2).close()
+                except OSError:
+                    pass
+            lines = len(re.findall(r"not in ALLOW_NETS", d.logtext()))
+            check("off-allowlist: one detail line per minute, not per connection", lines <= 2,
+                  "%d lines for 21 connections" % lines)
             check("off-allowlist: no sshd started", not d.stub_pids())
         finally:
             d.stop()
