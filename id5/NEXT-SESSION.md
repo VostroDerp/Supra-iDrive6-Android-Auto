@@ -18,14 +18,17 @@
 - [x] PR #42 tip still d7ba352, PR #65 still 18d402b (checked 11:30): the staged binaries are current.
 - [x] Staged: `$U/nbt-aad-usb5-vanilla` (556253 B), `$U/nbt-aad-usb4-patched` (557117 B),
       `$U/nbt-aad-usb6-mmr` (561950 B), and `$V` (knockd v2, its configs, NbtService). Host tests green.
-- [ ] USER: desk-rig run with the phone (`id5/tools/desk-rig/README.md`: udev rule once, then `make run`;
+- [x] Desk-rig run A (12:37): `desk_rig-vanilla` (PR #42 tip d7ba352, protocol 1, identity Android / Android Auto),
+      Pixel 9 Pro XL, Android 17, AA 17.9.664044. **Video**: VersionResponse 1.7, TLS complete, 0 decrypt failures,
+      all 16 channels opened (8 speech and 14 mic too), 532 frames 1280x720, the launcher renders. So phone side is
+      proven for run 13: a car failure is QNX side (claim, io-usb, NbtMediaMainApp). Rig B (patched, protocol 2) skipped.
+- [-] (was) USER: desk-rig run with the phone (`id5/tools/desk-rig/README.md`: udev rule once, then `make run`;
       then `make run ARGS="--protocol 2"`). It tells us before the car whether the phone accepts our identity,
       completes TLS and starts video. If it fails, run 13's prediction changes. ~15 min.
-- [ ] USER: phone paired for wireless adb (`adb pair` / `adb connect`) on a network the laptop also reaches
-      from the car (phone hotspot works). Otherwise `run` can't collect logcat.
-- [ ] USER: laptop internet available in the car (phone hotspot over Wi-Fi, while the ENET cable is plugged in).
-      The stock fallback (`car.sh fallback unlock`) needs it to reach the unlock relay. No BM3 dongle needed.
-- [ ] USER: note the phone state (AA data wiped? car entry in AA settings? USB preference?).
+- [x] Network: the car is in range of the home Wi-Fi. Laptop and phone both on it (adb over Wi-Fi works, logcat
+      for `run`), laptop internet for `car.sh fallback unlock` through it, HU over the ENET cable. No hotspot.
+- [x] Phone state: AA data NOT wiped, the car is listed in AA settings (as Toyota, see B3 identity note).
+      Leave it as is for run 13 (one variable).
 
 ### B1. Car setup (MUST, ~10 min)
 - [ ] `$C status` -> `$C knock`. Note the HU date and uptime: `$C sh 'date; uptime 2>/dev/null; pidin info | head -3'`.
@@ -71,6 +74,10 @@
       - reverse gear (camera, then AA back);
       - unplug and replug (reconnect is the PR's known weak spot);
       - time from plug to picture.
+- [ ] IF SUCCESS, separate run: BMW identity. With no CarPlay FSC there is no carplay.ini logo/Manufacturer, so
+      car_config.hpp falls back to Toyota (the phone lists the car as Toyota, and Devin's run showed a Toyota exit
+      icon). `$C run <N> nbt-aad-usb5 NBT_VEHICLE=bmw` (extra args go into the env). It also changes the vehicle id, so the phone sees a NEW
+      car (setup prompts again, the Toyota entry stays). Not before USB works.
 - [ ] IF SUCCESS: the PR #65 run (0d, last bullet): `slay mm-renderer`, then `RUN_MMR_CONF=0 $C run <N> nbt-aad-usb6`.
       Afterwards restart our renderer (`id5/tools/car/start-aa.sh` step 1) if video stays black.
 - [ ] Leave the release daemon as it was found (kill the test binary; the next boot autostarts the release one).

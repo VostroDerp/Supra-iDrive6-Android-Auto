@@ -53,4 +53,5 @@ Exit code: 0 = video frames received, 3 = session ran but no video, 1 = setup fa
 - After a run, the phone stays in accessory mode until it is unplugged. Replug before the next run (or the rig
   reuses the accessory: "already in accessory mode").
 
-Status: built and started on the host (2026-11-03); **not yet run against a phone**.
+Status: run against a Pixel 9 Pro XL (Android 17, AA 17.9.664044) on 2026-11-03, built from the PR #42 tip
+(protocol 1): video received (532 frames, 1280x720), all channels opened.
