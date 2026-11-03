@@ -85,6 +85,18 @@ CarPlay ports to AP clients. So **TCP 851/3804 over uap0 also needs a pf anchor 
 have to load it at start). Recon (read-only, NEXT-SESSION 0e): `ifconfig -a`,
 `pfctl -s rules`, `pfctl -s Anchors`.
 
+**Car recon 2026-11-03** (`id5/local/recon/improve-2026-11-03.txt`):
+- Interfaces: dwc0 169.254.199.119 (ENET) with VLANs 73/77/80/86 on it (160.48.199.x, the car's internal
+  network), veom0 160.48.199.254 (Ethernet over MOST), uap0 172.16.224.1 and wfd0 172.16.222.1 (both up),
+  lo1 172.16.223.1.
+- **New exposure:** stock pf has `pass quick on veom0 all` and `pass quick on vlan80 inet all`. With v1 binding
+  INADDR_ANY, knockd :851 and sshd :3804 are reachable from other modules on the internal network. v2's
+  ALLOW_NETS leaves 160.48.x out, so this is one more reason for the allowlist.
+- The main ruleset has no dwc0 rule, and `pfctl -s Anchors` lists only filter_BT1/filter_BT2, yet ENET traffic
+  passes. How is still unexplained: next session, read-only, `pfctl -a filter_OBD -s rules; pfctl -s Interfaces`.
+- uap0 passes only the CarPlay/AA ports and TCP/UDP 49512–65535, so 851/3804 over uap0 do need a rule.
+  Alternative without touching pf: put the uap0 listener on a port in 49512–65535.
+
 ### A3. P1 — Open window + idle timeout — APPROVED 2026-11-03, BUILT (not car-tested)
 Today, sshd stays up from the first knock until reboot.
 
@@ -115,6 +127,8 @@ sshd itself stays key-only.
 - Placement is declared by `insertStateID` (parent menu) + `insertAfterFocusID` (row it
   follows) in the plugin XML. NbtAad uses `insertStateID="20"` = Media/Radio. The stock
   plugins' XML on the HU (NEXT-SESSION 0e) shows which other menus accept plugin rows.
+  2026-11-03: `/opt/hmi/ID5/data/ro/Plugins` holds only NbtAad, so the stock plugins live elsewhere. Next:
+  `find /opt/hmi /var/opt/hmi /fs/sda0/opt/hmi -name '*.manifest'` (read-only).
   Order **decided 2026-11-03**:
   1. **Settings menu** (preferred), if a stock plugin proves an ID5 anchor there;
   2. **My Vehicle / vehicle info** (same condition);
@@ -293,6 +307,13 @@ None of these options has a comment or note saying why it was set.
 | `ChallengeResponseAuthentication` / `KbdInteractiveAuthentication` | unset (old default = yes) | Keyboard-interactive auth, a second password-style path | Not set | Set **no** explicitly |
 | `PermitRootLogin` | yes | Root login | Root is the only account | `without-password` (same effect with PasswordAuthentication off, but it states the intent). **Our sshd only**: the stock dropbear on :22 has its own settings and keeps password login |
 
+**Car recon 2026-11-03:**
+- No `sshd` user in /etc/passwd, and /etc is off limits, so `UsePrivilegeSeparation` stays no.
+- `/var/opt` is group-writable (drwxrwxr-x), and StrictModes checks every directory up the authorized_keys path.
+  So `StrictModes yes` would refuse /var/opt/aa/authorized_keys. It stays no, unless the keys move to a path
+  with no group- or world-writable directory (none of ours qualifies without chmod on a stock directory).
+- OpenSSH is 5.2 (QNX_Secure_Shell-20090621). Both v2 configs pass `sshd -t`.
+
 ### F4. (was B2) P1 — Keep everything ours on the writable partition
 - iDrive also loads plugins from `/var/opt/hmi/data/ID5/Plugins/` (upstream readme, "The
   iDrive app").
@@ -304,6 +325,11 @@ None of these options has a comment or note saying why it was set.
   - whether a new HMI version changes the PluginApp ABI, in which case our plugin no
     longer loads.
 - Recon (read-only): `mount`, `df -k /var`, `ls -ld /var/opt/hmi/data/ID5`.
+
+- **Car recon 2026-11-03:** `/var` -> `/fs/sda1`, its own qnx6 partition (503 MB, 21% used, 400 MB free).
+  The system image `/fs/sda0` (6.6 GB, 83%) holds /opt, read-only until `mount -uw /fs/sda0`.
+  `/var/opt/hmi/data/ID5` exists (drwxrwxrwx; HmiMain3D's RHMI-Cache) but has no `Plugins/` yet. Create it, as
+  the upstream install does for the /opt one. Our logs share that 400 MB with iDrive, hence the wrapper's rotation.
 
 ### F5. (was B3) P2 — Look for a second hook that doesn't depend on the HMI
 A stock component that runs something from `/var` or USB without a signature check (a

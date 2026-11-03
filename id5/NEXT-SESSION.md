@@ -35,10 +35,18 @@ missing). It starts knockd itself (option b of IMPROVEMENT-PLAN A1, the interim 
 - [ ] Back out: the install line with `/var/opt/aa/nbt-aad.wrapper.v1` (over the fallback if knock is gone).
 
 ### N2. NbtService (B6 as written, one reboot; then B7)
+Install location: `/var/opt/hmi/data/ID5/Plugins/NbtService` (B6's `mkdir -p` creates `Plugins/`). Upstream's
+readme says HmiMain3D loads `Plugins/<Name>/<Name>.manifest` from `/var/opt/hmi/data/ID5` as well as
+`/opt/hmi/ID5/data/ro`; not yet seen on this car, so the row appearing is the check, with the /opt folder as fallback.
+Before B6, read-only: `$C sh "find /opt/hmi /var/opt/hmi /fs/sda0/opt/hmi -name '*.manifest'"` (stock plugin anchors
+for A5/B8; the ro/Plugins folder holds only NbtAad).
 After N1, the wrapper also starts knockd, so B6 only proves the plugin loads and its toggle works. B7
 (`autostart` moved away) is what proves NbtService alone starts knockd. Fallback ready (N0).
 
 ### N3. knockd v2 (B4 side by side, then B5's swap)
+Read-only first: `$C sh 'pfctl -a filter_OBD -s rules; pfctl -s Interfaces'` (how ENET gets past `block drop all`;
+IMPROVEMENT-PLAN A2 recon). v1 is reachable from the car's internal network (veom0/vlan80 pass all); v2's
+ALLOW_NETS closes that.
 Both v2 sshd configs already pass `sshd -t` on the car (2026-11-03). B5's cold-boot check relies on N1's wrapper
 (or NbtService) to start knockd; the original wrapper never did.
 
