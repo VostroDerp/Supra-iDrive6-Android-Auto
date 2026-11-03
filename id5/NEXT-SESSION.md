@@ -42,7 +42,7 @@ missing). It starts knockd itself (option b of IMPROVEMENT-PLAN A1, the interim 
 - [ ] Back out: the install line with `/var/opt/aa/nbt-aad.wrapper.v1` (over the fallback if knock is gone).
 
 ### G1. Car GPS for Android Auto: source recon for upstream #73 (MUST, read-only, ~15 min, no reboot)
-Owner wants to contribute to #73 (tom-pryor, "Pass GPS data from the car to the phone"). Goal: find a position source
+Owner wants to contribute to #73 (tom-pryor, "Pass GPS data from the car to the phone"). Desk design note: `id5/GPS-73.md`. Goal: find a position source
 on the HU the daemon can READ, and how often it updates. No writes, nothing stock changed.
 Known from 2026-11-03: every session the phone sends SensorStartRequest for types 1 (location), 2 (compass),
 3 (speed), 7, 8, 10, 13, 19, 21, 22 (aasdk numbering); the daemon acks all of them but only ever sends 10 (night)
@@ -57,9 +57,11 @@ owner (the /dev/oap lesson). Listing and `pidin` are fine.
       `cat` each hit once. If one carries a position, measure its rate: 10 reads 1 s apart, note how often the
       timestamp/fields change (answers 1 Hz vs faster).
 - [ ] SOME/IP: does the SatellitePositioning service exist on this car? `$C sh 'sloginfo | grep -i -E "SatellitePositioning|Positioning" | sed -n 1,30p'`.
+- [ ] Who serves SatellitePositioning (BMW's own CarPlay GPS feed, see `id5/GPS-73.md` §3)?
+      `$C sh 'pidin ar | grep -i -E "someip|posit|navsens|atm"'`.
 - [ ] Pull for offline reading (into `id5/local/pulled/gps/`): `/etc/gps_G6_V7_ver20.cfg` (receiver, output rate),
-      `/bin/dev-navsens`, and the NavigationPositioning binary (path: `pidin -p NavigationPositioning arg`, or
-      `ls /opt/nav/bin /fs/sda0/opt/nav/bin`).
+      `/bin/dev-navsens`, `/fs/sda0/opt/nav/eceusa/bin/NavigationPositioning`, and the SOME/IP client libraries
+      (`$C sh "find /fs/sda0 -name 'libsys_someip*'"`).
 - [ ] Desk afterwards: which source, update rate, which fields (lat/lon, accuracy, altitude, speed, bearing, time,
       dead-reckoned or raw GNSS), then a short design note for #73 (the owner decides whether to comment there).
 
