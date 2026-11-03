@@ -133,11 +133,42 @@ Devin's notes as leads only.
       and `... cmd=ap_start iface=uap0`. Record both replies. Watch >= 5 min.
 - [ ] W4 for each GONE: what does hu-watch show at that second (new pid, process gone, ifconfig change)? The
       next attempt changes only that (e.g. `slay scp` first, if scp's mwud replaced ours). Max 3 attempts.
-- [ ] W5 if a beacon holds >= 5 min: phone joins it? (DHCP 172.16.224.x?) Note it. AA over it is a later
-      session (iap2.cfg + daemon on uap0).
+- [ ] W5 if a beacon holds >= 5 min: does the phone join it by hand (Wi-Fi settings, the key from W3)? DHCP
+      172.16.224.x? Note it.
+- [ ] W6 if W5 joined: does the phone AUTO-join from the Bluetooth credentials? The mechanism is upstream and
+      not blocked by our code; it just points at the dongle today (nbt-aad.env NBT_AP_CFG/NBT_AP_IF). So test it
+      by hand, NOT through the wrapper or env:
+      - write the uap0 creds in the same INI format as the current file (`$C sh 'cat /var/opt/aa/iap2.cfg'` for
+        the layout; keep its SecurityType) to a NEW file `/var/opt/aa/iap2-uap0.cfg`: SSID/Passphrase from W3,
+        BSSID = uap0's MAC (12 hex, no colons, from `ifconfig uap0`);
+      - kill the release daemon (it holds the Bluetooth service); phone forgets the test network;
+      - launch wireless, no USB flags, pointing at uap0 (no NBT_AP_IP/NBT_AP_BSSID so the daemon reads them off
+        uap0): `NBT_AP_CFG=/var/opt/aa/iap2-uap0.cfg NBT_AP_IF=uap0` plus the usual AOI/MM/LD_LIBRARY_PATH, log to
+        `/var/opt/aa/nbt-uap0-1.log`;
+      - the log should show `[Wireless] uap0: ip='172.16.224.1' bssid='<uap0 MAC>'` and the Wi-Fi details sent
+        over Bluetooth; the phone joins on its own and AA starts over the car's Wi-Fi = goal 3 working once.
+      - Note: the daemon runs `pfctl -d` at start (upstream, so the phone can reach 5277), so the packet filter
+        is off on every interface until reboot; knockd v2's own allowlist still applies.
 - [ ] Pull `id5/local/wifi/` logs + the HU's `mwud-*.log`, `sloginfo`. Questions for tom-pryor (#12) from
       what we saw.
 - [ ] A reboot puts Wi-Fi back to stock. Do it before B10 if anything was slain or started.
+
+### B9c. Boot-hook recon for F5 (IF TIME, READ-ONLY, ~10 min; analysis is done later on the laptop)
+Why (IMPROVEMENT-PLAN F5): today everything that starts knockd runs via HmiMain3D loading a plugin (NbtAad, and
+now NbtService). If the HMI won't boot, knockd never arms and we're locked out exactly when we need in. A second
+hook at the QNX start-up layer, below the HMI, would arm knockd even then. It must start KNOCKD (not sshd), so
+SSH stays closed until a signed knock — no permanent exposure. This trip only COLLECTS files; we decide how (or
+whether) to hook later, off-car.
+- [ ] Characterise the process supervisor (findings.md §8: Connectivity/Online/scp respawn ~30 s on their own).
+      Read-only: `$C sh 'ls -l /etc/rc* /proc/boot/*.sh 2>/dev/null; cat /etc/system/config/* 2>/dev/null | head'`
+      — what it launches, from which paths. (Adjust paths once the first listing shows the real layout.)
+- [ ] Pull the start-up scripts and the supervisor config to `id5/local/recon/boot/` (`$C pull ...`), so the
+      grep for exec points (`spawn|system|/var|/fs/usb|/mnt|on -f|.sh`) runs on the laptop, not the car.
+- [ ] Note the iStep / SW version string next to those files (what a firmware update would overwrite).
+- [ ] No writes to any stock boot/start-up file this trip — a typo there boot-loops the unit. Recon only.
+Deliverable (laptop, later): a short findings.md note — what the supervisor respawns and from where, which exec
+points read from a writable path, and whether a no-edit hook exists (a stock entry that runs a binary by path
+from a writable location, or a script that sources a drop-in directory). No install, and no restore-kit this trip.
 
 ### B10. Wrap-up (MUST, ~5 min)
 - [ ] Final state: release daemon autostart restored, knockd (v1 or v2, whichever passed) answering, NbtService

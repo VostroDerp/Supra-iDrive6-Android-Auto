@@ -308,6 +308,10 @@ breaks.
 - Method: from pulled binaries and start-up scripts, grep for paths under `/var`,
   `/fs/usb*` or `/mnt` used with `sh` / `spawn` / `system`.
 - This is research with no promised result.
+- Aim is a hook that starts KNOCKD (not sshd), so there is no permanent-exposure downside.
+- READ-ONLY recon queued for the 2026-11-03 session (NEXT-SESSION B9c): pull the start-up /
+  supervisor config, grep on the laptop, note the SW version. No writes to stock boot files,
+  no install, no restore-kit this trip. Prefer a no-edit drop-in; decide how to hook later.
 
 ### F6. (was B4) P2 — If the foothold is lost anyway
 - One unlock from any provider gets it back.
