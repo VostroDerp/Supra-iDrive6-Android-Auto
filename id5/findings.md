@@ -57,7 +57,10 @@ readme says HmiMain3D also loads plugins from `/var/opt/hmi/data/ID5/Plugins` (n
 ## Wi-Fi
 - `uap0` is up at 172.16.224.1 with its beacon off: it is CarPlay's hotspot and stays dark without the licence.
 - `wfd0`, the Wi-Fi Direct group the car uses for screen mirroring, is up at boot at 172.16.222.1, run by the
-  stock `mwud`. Its passphrase is stored encrypted in `/var/opt/conn/WFDPass.conf`; upstream's `NBT_ALT_WIFI=DIRECT`
+  stock `mwud`. This needs the screen-mirroring coding, which was off on this car and was switched on with
+  BimmerCode (2026-11-01): `MIRRORING`, `ENT_MIRACAST` and `ENT_MIRACAST_DISPLAY_SETTINGS` set to active
+  (`WLAN_WIFI_DIRECT` and `WLAN_STATUS` were already active). No CarPlay licence was needed. Turning it off again
+  would remove the wireless route below; it also brings an occasional screen-mirroring pop-up. Its passphrase is stored encrypted in `/var/opt/conn/WFDPass.conf`; upstream's `NBT_ALT_WIFI=DIRECT`
   decodes it and offers the group to the phone. This is the wireless route for this car (NEXT-SESSION step 6).
 
 ## Car data seen so far

@@ -92,8 +92,9 @@ An iDrive plugin that starts knockd at boot without the Android Auto app, and ho
 - [ ] Way back: `touch /var/opt/aa/service.disable`, or remove the plugin folder.
 
 ## 6. Wireless over Wi-Fi Direct (no reboot, ~25 min)
-The car runs its Wi-Fi Direct group at boot even without CarPlay. Upstream's `NBT_ALT_WIFI=DIRECT` offers that group
-to the phone; it was tested on a car with CarPlay, so this is the first car without it.
+The car runs its Wi-Fi Direct group at boot even without CarPlay, because its screen-mirroring coding was switched on
+with BimmerCode (findings.md, Wi-Fi). Upstream's `NBT_ALT_WIFI=DIRECT` offers that group to the phone; it was tested
+on a car with CarPlay, so this is the first car without it.
 - [ ] Read-only: `$C push $U/wfd_probe-main /var/opt/aa/wfd_probe`, `$C sh /var/opt/aa/wfd_probe > id5/local/recon/wfd-probe-<date>.txt`
       (it prints the decoded passphrase: the output stays in `local/`). Is the group visible on the phone always,
       or only during iDrive's screen-mirroring pairing? Which band (`grep -i -E "chan|band|freq|hw_mode"` in
