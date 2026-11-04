@@ -43,29 +43,28 @@ missing). It starts knockd itself (option b of IMPROVEMENT-PLAN A1, the interim 
       works with no fallback, plug in -> AA. Daemon log: `/var/opt/aa/nbt.log`.
 - [ ] Back out: the install line with `/var/opt/aa/nbt-aad.wrapper.v1` (over the fallback if knock is gone).
 
-### G1. Car GPS for Android Auto: source recon for upstream #73 (MUST, read-only, ~15 min, no reboot)
-Owner wants to contribute to #73 (tom-pryor, "Pass GPS data from the car to the phone"). Desk design note: `id5/GPS-73.md`. Goal: find a position source
-on the HU the daemon can READ, and how often it updates. No writes, nothing stock changed.
-Known from 2026-11-03: every session the phone sends SensorStartRequest for types 1 (location), 2 (compass),
-3 (speed), 7, 8, 10, 13, 19, 21, 22 (aasdk numbering); the daemon acks all of them but only ever sends 10 (night)
-and 13 (driving status), so the phone falls back to its own GPS. The HU runs
-`dev-navsens -C/etc/gps_G6_V7_ver20.cfg -Gd=/dev/ser3` (GPS receiver on ser3) and `NavigationPositioning`
-(`--bp=/var/opt/nav`); the pulled `Connectivity` has a SOME/IP client for `BMW_INFOTAINMENT_SatellitePositioning`
-(events UpdatePosition / UpdatePPS) in its projection-mode (CarPlay) code.
-Never open `/dev/ser3` or any node dev-navsens serves for reading data: a second reader can take bytes from the
-owner (the /dev/oap lesson). Listing and `pidin` are fine.
-- [ ] Nodes and owners: `$C sh 'pidin -p dev-navsens fds; pidin -p NavigationPositioning fds; ls -l /dev | grep -i -E "nav|gps|gnss|sens"; ls /dev/name/local | grep -i -E "nav|pos|gps|sens"'`.
-- [ ] PPS (plain-text objects, safe to read): `$C sh 'find /pps 2>/dev/null | grep -i -E "pos|gps|gnss|loc|nav|speed|heading"'`;
-      `cat` each hit once. If one carries a position, measure its rate: 10 reads 1 s apart, note how often the
-      timestamp/fields change (answers 1 Hz vs faster).
-- [ ] SOME/IP: does the SatellitePositioning service exist on this car? `$C sh 'sloginfo | grep -i -E "SatellitePositioning|Positioning" | sed -n 1,30p'`.
-- [ ] Who serves SatellitePositioning (BMW's own CarPlay GPS feed, see `id5/GPS-73.md` §3)?
-      `$C sh 'pidin ar | grep -i -E "someip|posit|navsens|atm"'`.
-- [ ] Pull for offline reading (into `id5/local/pulled/gps/`): `/etc/gps_G6_V7_ver20.cfg` (receiver, output rate),
-      `/bin/dev-navsens`, `/fs/sda0/opt/nav/eceusa/bin/NavigationPositioning`, and the SOME/IP client libraries
-      (`$C sh "find /fs/sda0 -name 'libsys_someip*'"`).
-- [ ] Desk afterwards: which source, update rate, which fields (lat/lon, accuracy, altitude, speed, bearing, time,
-      dead-reckoned or raw GNSS), then a short design note for #73 (the owner decides whether to comment there).
+### G1. Car GPS for Android Auto: test Tom's #77 on the ID5 (MUST, ~20 min, no reboot; combined with the B9d capture)
+Rewritten 2026-11-04. Tom's PR #77 (WIP, "Send GPS data from car to phone", on #78's MOST refactor) already does #73
+on his J29: the daemon's observe-only MOST client reads the navigation's GNSS fix (FBlock 0x52 inst 00, fkt 0x440,
+~1 Hz, raw fix, no dead reckoning) and receiver status (0xCD/01 fkt 0xC00), and sends LOCATION (lat/lon only) and
+GPS_SATELLITE once the phone starts those sensors. His todo: speed, heading, altitude, real accuracy (units of the raw
+fields unknown). So our job is no longer finding a source: it is (1) does the ID5 send the same messages, (2) a drive
+log that pins down the units. My SOME/IP notes in `id5/GPS-73.md` are the fallback only.
+Binary: `$U/nbt-aad-usb11-gps` (PR head 14728f4, v1.8.86-cargps, QNX-built 2026-11-04). It is upstream main 27 commits
+past usb9 (audio restructure etc.), so if USB itself misbehaves, that is the newer main, not GPS: rerun usb7 to tell.
+The MOST log carries the car's position: logs stay in `id5/local/` and never go into the repo or a public comment.
+- [ ] USER: start an iDrive route (parked is fine), so the factory guidance runs too (B9d's FBlock 0x82, same log).
+- [ ] Push: `$C push $U/nbt-aad-usb11-gps /var/opt/aa/nbt-aad-usb11`.
+- [ ] Run (USB as run 14): `$C run <N> nbt-aad-usb11 NBT_VEHICLE=bmw NBT_CAR_GPS=1 NBT_MOST_LOG=1`. Wait 2 min with
+      Google Maps open on the phone.
+- [ ] In the log: `[GPS]` fixes about once a second with a 3D fix; `>>> SensorStartRequest (type=1)` then location
+      events sent; `[MOSTLOG]` registry lines (which FBlocks the ID5 has: 0x52, 0xCD, 0x82, 0xE5).
+      In Maps: the blue dot still in the right place (its lat/lon now come from the car).
+- [ ] Pull the log to `id5/local/recon/run-<N>/`. If no `[GPS]` lines: `grep MOSTLOG` for any FBlock 0x52 / fkt 0x440
+      traffic, then fall back to `id5/GPS-73.md` (SOME/IP SatellitePositioning, already in Connectivity).
+- [ ] Later, G2 (a drive, owner driving, ~15 min): same run on a known road; hold steady speeds (e.g. 30 and 50 mph on
+      the speedo, note the times) and drive known headings (north/east), park once at a known height. Matches the raw
+      speed / heading / height fields to real units: Tom's open todo, and our contribution to #77.
 
 ### W1. Wireless over the car's Wi-Fi Direct group (MUST after N1, ~25 min, no reboot)
 Upstream main v1.8.80 (b0ad23d) added `NBT_ALT_WIFI`: Wi-Fi Direct instead of the CarPlay hotspot. Upstream car-verified it
@@ -375,6 +374,11 @@ points read from a writable path, and whether a no-edit hook exists (a stock ent
 from a writable location, or a script that sources a drop-in directory). No install, and no restore-kit this trip.
 
 ### B9d. Cluster-arrow recon for F10 (IF TIME, READ-ONLY, ~10 min; analysis later on the laptop)
+2026-11-04: the MOST side is now known from upstream #52 (deathwalker80, MINI F60): F-series cluster/HUD guidance is
+a drawing protocol on MOST FBlock 0x82 inst 00 from node 0x0101 (polygons 0x21D, pen 0x219, text 0x210 UTF-16LE,
+bar 0x227, double-buffered instances, swap 0x20E / clear 0x220). Open there: is 0x0101 the HUD or the cluster, and
+the request header for sending. Our F36 (6WA cluster, NO HUD) answers the first: if G1's `NBT_MOST_LOG` shows FBlock
+0x82 traffic during the iDrive route, it drives the cluster. The script below stays useful for the files behind it.
 - [ ] USER: start an iDrive route (parked is fine) so the cluster shows a turn arrow.
 - [ ] `$C push id5/tools/recon/cluster-recon.sh /var/opt/aa/cluster-recon.sh`,
       `$C sh 'sh /var/opt/aa/cluster-recon.sh > /var/opt/aa/cluster-recon.txt 2>&1'` (section 2 greps binaries:

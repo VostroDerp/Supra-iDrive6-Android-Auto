@@ -3,6 +3,11 @@
 Desk groundwork, 2026-11-03 (task D-73). The car side is still open: runbook G1 answers it. Nothing here has been
 built or car-tested yet.
 
+**2026-11-04: mostly superseded.** Tom's upstream PR #77 (WIP, on #78) reads the fix from MOST instead: FBlock 0x52
+inst 00 fkt 0x440 (the navigation's raw GNSS fix, ~1 Hz) and 0xCD/01 fkt 0xC00 (receiver status), and sends
+LOCATION and GPS_SATELLITE. Sections 2 (wire format) and 6 (rate) still hold; sections 3-5 (SOME/IP) are the fallback
+if the ID5 does not send those MOST messages. Runbook G1 now tests #77 on the ID5.
+
 ## 1. What happens today
 
 - Every session the phone sends SensorStartRequest (channel 1, msg 0x8001) for types 1, 2, 3, 7, 8, 10, 13, 19,
