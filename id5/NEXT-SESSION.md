@@ -47,6 +47,8 @@ the same remount.
 - [ ] The cleaned settings file: `$C sh "grep -v -E '^(export )?NBT_AP_(CFG|IF|IP|BSSID)=' /opt/aa/nbt-aad.env >/var/opt/aa/nbt-aad.env.new; cat /var/opt/aa/nbt-aad.env.new"`.
 - [ ] Install both (`/opt` is read-only until remounted): `$C push id5/tools/hu-install/nbt-aad-usb.sh /var/opt/aa/nbt-aad-usb.sh`,
       `$C sh 'mount -uw /fs/sda0 && cp /var/opt/aa/nbt-aad-usb.sh /opt/aa/nbt-aad && chmod 755 /opt/aa/nbt-aad && cp /var/opt/aa/nbt-aad.env.new /opt/aa/nbt-aad.env; mount -ur /fs/sda0; ls -l /opt/aa/'`.
+- [ ] Keep the repo copy current: `$C pull /opt/aa/nbt-aad.env id5/tools/hu-install/nbt-aad.env` (commit it after the
+      session).
 - [ ] Without a reboot: stop the old stuck wrappers and any test daemon, choose Android Auto in the iDrive menu,
       plug in. Check: picture; `pidin ar` shows knockd once; log in `/var/opt/aa/nbt.log`.
 - [ ] Reboot. Check: `$C knock` works with no fallback; plug in, picture.
@@ -111,11 +113,34 @@ on a car with CarPlay, so this is the first car without it.
       afterwards.
 - [ ] **The SSH switch in the Settings menu** (after step 5): from step 5's manifest listing, find the Settings
       anchor, change `insertStateID` in `NbtService.xml`, rebuild, reinstall, reboot. Way back: the step 5 build.
+- [ ] **Inventory of what's on the head unit** (read-only, feeds the tidy-up below):
+      `$C sh 'ls -la /opt/aa /var/opt/aa /var/opt/aa/*/ /opt/hmi/ID5/data/ro/Plugins/NbtAad' > id5/local/recon/inventory-<date>.txt`.
 - [ ] **A second boot hook** (IMPROVEMENT-PLAN F5), read-only: pull the stock start-up scripts and look for one that
       runs something from `/var` or USB without a signature check. Nothing is changed tonight; a candidate becomes
       its own step next session.
 
 ## Later (not this session)
+**Tidy-up: only what this car needs, nothing left over from the dongle and Devin days.** One change per test.
+- Leftovers on the head unit (from the inventory): sort each file in `/var/opt/aa` and `/opt/aa` into in use or
+  not, and move the unused ones to `/var/opt/aa/attic-<date>/` (not deleted until a few sessions run without them).
+  Expected: `iap2.cfg`, `start-aa.sh`, the old test daemons (`nbt-aad-usb`..`usb8`, the old release `nbt-aad`),
+  Devin's patched Wi-Fi Direct test programs and their configs, and, once #65 is in the base, `mm-renderer.conf`,
+  `aoi/` and `mmr.log`. Never moved: knockd, its config, keys and logs, sshd and its config, `nbt-aad-base`,
+  `autostart`.
+- The settings into `nbt-aad.env`: `NBT_USB`, `NBT_USB_DIRECT` and `NBT_VEHICLE` go from the wrapper to the env
+  file, the upstream way.
+- Test without `NBT_SPP_REREG_S=0` (a dongle-era workaround; upstream default 5), then without the extra
+  `LD_LIBRARY_PATH` (set in both the wrapper and the env file), then without `NBT_VERBOSE=1`, `AOI_CONFIG` and
+  `MM_RENDERER_CONFIG` in the env file.
+- #65 merged: drop the renderer start and `unset LD_PRELOAD` from the wrapper (UPSTREAM-WATCH has the trap).
+- Update the iDrive app to the release matching the base build (the installed one is an older release, unmodified;
+  the repo's `hu-install/plugin/NbtAad.xml` also differs from upstream main).
+- Then decide whether the wrapper stays (knockd start, log rotation, the base copy) or `/opt/aa/nbt-aad` becomes the
+  daemon itself, as upstream installs it.
+- In the repo: `tools/legacy/` (the dongle, hotspot and unlock-relay tools) can go once nothing in it is needed for
+  recovery; `tools/recon/probe-ap.sh` belongs to the old hotspot work too.
+
+**Other:**
 - Which coding Wi-Fi Direct needs, and which one brings the screen-mirroring pop-up. Starting from today's coding
   (BimmerCode backup first), switch one setting off per test (`ENT_MIRACAST_DISPLAY_SETTINGS`, `ENT_MIRACAST`,
   `MIRRORING`, `WLAN_AP`, then `WLAN_WIFI_DIRECT`), reboot, and check: `wfd0` up, the step 6 session, the pop-up.
