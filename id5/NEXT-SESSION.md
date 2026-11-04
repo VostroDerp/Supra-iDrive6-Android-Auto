@@ -9,10 +9,12 @@ starts on its own, so after a reboot there is neither AA nor our SSH. This sessi
 
 **Priority (owner's choices, 2026-11-03; record in `id5/local/decisions/prio-2026-11-03/`):**
 - Do first, car: N1 (boot wrapper), G1 (GPS recon), W1 (Wi-Fi Direct). Desk: D-73 (#73 groundwork).
-- Next session, car: N2 (NbtService), N3 (knockd v2), AUD (audio over the AA link). Desk: D-RC (reconnect fix),
+- Next session, car: RC (reconnect repro with usb10, the fix's car test; moved up 2026-11-04), N2 (NbtService),
+  N3 (knockd v2), AUD (audio over the AA link). Desk: D-RC (reconnect fix),
   D-WRAP (USB + wireless wrapper, after W1), D-APP (iDrive app to current upstream).
-- Later: W2 (passphrase change), RC (reconnect repro), NAV (nav prompts), B8, B9c, B9d; desk D-IVA, D-72.
+- Later: W2 (passphrase change), NAV (nav prompts), B8, B9c, B9d; desk D-IVA, D-72.
 - Dropped: B9 (the car's own hotspot; Wi-Fi Direct replaces it).
+- Upstream PR for the reconnect fix: held until RC passes (owner, 2026-11-04). Draft kept locally.
 
 ### N0. Getting in after any reboot (until N1 is done)
 Our knockd does NOT start at boot (findings in the 2026-11-03 results below). Every boot:
@@ -66,13 +68,18 @@ owner (the /dev/oap lesson). Listing and `pidin` are fine.
       dead-reckoned or raw GNSS), then a short design note for #73 (the owner decides whether to comment there).
 
 ### W1. Wireless over the car's Wi-Fi Direct group (MUST after N1, ~25 min, no reboot)
-Upstream main v1.8.80 (b0ad23d) added `NBT_ALT_WIFI`: Wi-Fi Direct instead of the CarPlay hotspot, car-verified on a
-J29, including cars with no CarPlay config. Built 2026-11-03: `$U/nbt-aad-usb9-main-wfd` (598363 B) and
+Upstream main v1.8.80 (b0ad23d) added `NBT_ALT_WIFI`: Wi-Fi Direct instead of the CarPlay hotspot. Upstream car-verified it
+on a J29 that has CarPlay; the no-CarPlay name lookup (b0ad23d) is untested on a car, so this would be the first
+car without CarPlay. Sq00ky (#65, 2026-11-03 20:04 UTC): bringing Wi-Fi up/down and 5 vs 2.4 GHz still need work,
+and the SSID lookup is "mostly consistent" only, so check `[Wireless] Wi-Fi Direct AP: ssid=` against the real
+name (id5/local/wifi-ids.txt) without writing it into the repo. Built 2026-11-03: `$U/nbt-aad-usb9-main-wfd` (598363 B) and
 `$U/wfd_probe-main` (41222 B, upstream's read-only diagnostic); host tests alt_wifi, session_owner, usb_accessory pass.
 What we already know: wfd0 is up at boot at 172.16.222.1 with stock mwud (recon 2026-11-03); the group SSID is
 `DIRECT-03-BMW<5 digits> (real name in id5/local/wifi-ids.txt)` (Devin's captures); `WFDPass.conf` (pulled 2 Nov) decodes with upstream's key to a valid WPA2
 passphrase. Never write the decoded value into the repo. Devin's "WFD GO unusable for AA" (findings.md) was the
 encrypted passphrase plus a listener bound to 172.16.224.1; upstream fixed both.
+- [ ] Band (read-only, config files only, never WFDPass.conf): `$C sh 'grep -i -E "chan|band|freq|op_?class|hw_mode" /opt/conn/bin/wifidirect_defaults.conf /opt/conn/bin/mwu_dev.conf' > id5/local/recon/wfd-band-<date>.txt`.
+      2.4 or 5 GHz decides whether higher AA resolution is possible later (upstream roadmap: needs 5 GHz).
 - [ ] Push: `$C push $U/nbt-aad-usb9-main-wfd /var/opt/aa/nbt-aad-usb9`, `$C push $U/wfd_probe-main /var/opt/aa/wfd_probe`.
 - [ ] Read-only: `$C sh /var/opt/aa/wfd_probe > id5/local/recon/wfd-probe-<date>.txt`. Expect the wfd0 address, the
       passphrase decoded OK and the SSID from mwud. Also, from the phone's Wi-Fi list: is `DIRECT-03-BMW<5 digits> (real name in id5/local/wifi-ids.txt)` visible
