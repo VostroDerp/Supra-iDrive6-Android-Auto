@@ -4,7 +4,7 @@
  * It replaces the earlier workarounds (patched mwud_pub, gdb/pdebug injection), which were only needed because
  * the BM3 dongle dropped laptop->HU UDP and the HU has no UDP tool of its own.
  *
- * Wire format (findings.md §10, from mwud's disassembly; mwu.py is the laptop-side equivalent):
+ * Wire format (git show 934156c:id5/findings.md §10, from mwud's disassembly; mwu.py is the laptop-side equivalent):
  *   datagram = u32 LE body_len | u32 seq (echoed back; 0 works) | body
  *   body     = "k=v\n" lines, every line \n-terminated, module=<name> required (default here: mwpamod)
  * Replies come back to the sender's address in the same format.

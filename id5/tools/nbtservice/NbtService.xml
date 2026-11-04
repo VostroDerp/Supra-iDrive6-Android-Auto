@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- NbtService: one entry row that opens one page with the "SSH (15 min)" toggle and a status row.
      PLACEMENT: insertStateID below is the ONLY thing to change when the iDrive menu recon
-     (NEXT-SESSION 0e) finds a Settings or My Vehicle anchor that ID5 accepts (IMPROVEMENT-PLAN A5
+     (NEXT-SESSION step 5, the manifest check) finds a Settings or My Vehicle anchor that ID5 accepts (IMPROVEMENT-PLAN A5
      prefers Settings, then My Vehicle, then here).
        insertStateID="20"       = Media/Radio, the one anchor already proven on this car
        insertAfterFocusID="2270" = the same row NbtAad follows; applicationWeight 201 (NbtAad is 200)

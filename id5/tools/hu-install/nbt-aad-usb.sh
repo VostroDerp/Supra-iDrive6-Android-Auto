@@ -1,7 +1,10 @@
 #!/bin/sh
 # nbt-aad-usb.sh — NbtAad app entry on the ID5 for USB Android Auto. Installed as /opt/aa/nbt-aad
-# (the path the iDrive app spawns, at autostart and from the menu entry). Replaces the BM3-dongle
-# wrapper nbt-aad.sh, whose dwc0 DHCP wait never ends without the dongle (car session 2026-11-03).
+# (the path the iDrive app spawns, at autostart and from the menu entry). Replaces the old BM3-dongle
+# wrapper (tools/legacy/nbt-aad-bm3.sh), whose dwc0 DHCP wait never ends without the dongle (2026-11-03).
+#
+# It runs /var/opt/aa/nbt-aad-base: a copy of whichever daemon build is the current base. Changing the
+# base is one copy on /var, no remount: cp <build> nbt-aad-base.new && mv nbt-aad-base.new nbt-aad-base
 #
 # Order matters: knockd first, so SSH never depends on anything after it.
 # The app passes the env from /opt/aa/nbt-aad.env plus the HMI's own environment; this script
@@ -17,7 +20,7 @@
 unset LD_PRELOAD
 AA=/var/opt/aa
 CP=/fs/sda0/opt/conn
-DAEMON=${NBT_DAEMON:-$AA/nbt-aad-usb7}
+DAEMON=${NBT_DAEMON:-$AA/nbt-aad-base}
 running() { pidin ar | grep -v grep | grep -q "$1"; }
 
 # 1. knockd (SSH gate), unconditionally, unless one already runs (the app may start us twice).

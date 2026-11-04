@@ -1,6 +1,6 @@
 #!/bin/sh
 # ivahd-recon.sh: read-only recon for decoding Android Auto video on the IVA-HD directly (renderer option A,
-# id5/IMPROVEMENT-PLAN.md F9) instead of through mm-renderer. Runs on hu-omap (QNX ksh: no head/env/nc/scp).
+# git show 934156c:id5/IMPROVEMENT-PLAN.md, F9; parked) instead of through mm-renderer. Runs on hu-omap (QNX ksh: no head/env/nc/scp).
 #
 #   car.sh push id5/tools/recon/ivahd-recon.sh /var/opt/aa/ivahd-recon.sh
 #   car.sh sh 'sh /var/opt/aa/ivahd-recon.sh > /var/opt/aa/ivahd-recon.txt 2>&1'

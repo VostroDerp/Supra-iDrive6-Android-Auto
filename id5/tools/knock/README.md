@@ -79,7 +79,7 @@ from boot, so that case means the cable or the dongle is gone — and then SSH w
 worked anyway. The FDAC unlock plus the stock dropbear on :22 stays the way back regardless.
 
 Correction 2026-11-03: nothing runs start-aa.sh at boot, and knock.log shows only manual starts, so the
-"cold boot" auto-arm below was not what happened. Boot start: NEXT-SESSION N1 (wrapper) and NbtService.
+"cold boot" auto-arm below was not what happened. Boot start: the USB start-up script (NEXT-SESSION step 1) and NbtService (step 5).
 Proven on the car (v1): knockd started -> knock.py -> 'K' ->
 sshd:3804 -> key-only root login on hu-omap. Garbage/wrong-key signatures rejected + logged.
 Gotcha found+fixed: bare TCP probes (`nc -z`) killed the daemon via SIGPIPE on send ->

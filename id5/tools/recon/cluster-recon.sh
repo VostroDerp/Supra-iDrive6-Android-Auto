@@ -1,5 +1,5 @@
 #!/bin/sh
-# cluster-recon.sh: read-only recon for Android Auto turn arrows in the F36 6WA cluster (id5/IMPROVEMENT-PLAN.md F10).
+# cluster-recon.sh: read-only recon for Android Auto turn arrows in the F36 6WA cluster (see upstream issue #52; history: git show 934156c:id5/IMPROVEMENT-PLAN.md, F10).
 # Finds which HU processes, configs and MOST function blocks carry the native navigation's arrows to the KOMBI.
 # Runs on hu-omap (QNX ksh: no head/env/nc/scp). Sends nothing on MOST or CAN.
 #

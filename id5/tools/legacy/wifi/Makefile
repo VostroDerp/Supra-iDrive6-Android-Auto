@@ -1,5 +1,5 @@
 # Wi-Fi exploration tools. mwu-send runs on the HU; the watchers run on the laptop.
-REPO      := $(abspath ../../..)
+REPO      := $(abspath ../../../..)
 QNX_IMAGE ?= andreluizpd/qnx-qcc-docker:6.5.0
 
 .PHONY: all test car clean
@@ -13,7 +13,7 @@ test: mwu-send-host
 
 # ARMv7LE QNX binary for /var/opt/aa/mwu-send
 car:
-	docker run --rm --platform linux/386 -v $(REPO):/src -w /src/id5/tools/wifi $(QNX_IMAGE) \
+	docker run --rm --platform linux/386 -v $(REPO):/src -w /src/id5/tools/legacy/wifi $(QNX_IMAGE) \
 	  qcc -Vgcc_ntoarmv7le -O2 -Wall -Wextra -march=armv7-a -mfpu=vfpv3 -mfloat-abi=softfp -o mwu-send mwu_send.c -lsocket
 	@echo "built mwu-send — deploy with: car.sh push mwu-send /var/opt/aa/mwu-send"
 

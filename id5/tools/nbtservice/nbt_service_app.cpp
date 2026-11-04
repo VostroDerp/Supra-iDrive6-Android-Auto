@@ -138,7 +138,7 @@ void initPaths() {
 }
 
 // NbtService.xml ids. The entry row's placement is the ONE thing to change after the iDrive menu recon
-// (NEXT-SESSION 0e): the insertStateID attribute in NbtService.xml. Nothing in this file depends on it.
+// (NEXT-SESSION step 5, the manifest check): the insertStateID attribute in NbtService.xml. Nothing in this file depends on it.
 const unsigned kMenuState     = 10;
 const unsigned kActSsh        = 24;             // <checkbox action="24">
 const unsigned kSshModel      = 34;             // raBoolModel: the tick

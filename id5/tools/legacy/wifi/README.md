@@ -1,4 +1,7 @@
-# Wi-Fi exploration: the car's own AP without CarPlay
+# Wi-Fi exploration: the car's own AP without CarPlay (retired)
+
+**Dropped 2026-11-04:** the car's Wi-Fi Direct group (`wfd0`) is up at boot without CarPlay, and upstream's
+`NBT_ALT_WIFI=DIRECT` uses it, so the hotspot route below is no longer pursued. Kept for reference.
 
 Goal 3: Android Auto over the head unit's own Wi-Fi (`uap0`, 172.16.224.1). This car has no CarPlay FSC, so
 nothing turns the AP on. Earlier sessions got it beaconing a few times but never kept it up, and never
@@ -10,7 +13,7 @@ mwud (the Wi-Fi control daemon, UDP 127.0.0.1:9096) needed a patched copy and th
 the ENET cable, our SSH and the QNX toolchain, **`mwu-send` runs on the HU itself** and talks to the stock mwud
 directly. The `legacy/` injection tools are not needed.
 
-Treat `findings.md` §8–12 as leads, not facts: the decoded wire format (§10) and mwud's command set are
+Treat the old findings (`git show 934156c:id5/findings.md`) §8–12 as leads, not facts: the decoded wire format (§10) and mwud's command set are
 reliable; the conclusions about why the AP died are guesses.
 
 ## Tools
