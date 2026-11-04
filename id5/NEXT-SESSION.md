@@ -92,8 +92,8 @@ An iDrive plugin that starts knockd at boot without the Android Auto app, and ho
 - [ ] Way back: `touch /var/opt/aa/service.disable`, or remove the plugin folder.
 
 ## 6. Wireless over Wi-Fi Direct (no reboot, ~25 min)
-The car runs its Wi-Fi Direct group at boot even without CarPlay, because its screen-mirroring coding was switched on
-with BimmerCode (findings.md, Wi-Fi). Upstream's `NBT_ALT_WIFI=DIRECT` offers that group to the phone; it was tested
+The car runs its Wi-Fi Direct group at boot even without CarPlay, since Wi-Fi and screen-mirroring coding was switched
+on with BimmerCode (findings.md, Wi-Fi; which setting matters is not tested yet). Upstream's `NBT_ALT_WIFI=DIRECT` offers that group to the phone; it was tested
 on a car with CarPlay, so this is the first car without it.
 - [ ] Read-only: `$C push $U/wfd_probe-main /var/opt/aa/wfd_probe`, `$C sh /var/opt/aa/wfd_probe > id5/local/recon/wfd-probe-<date>.txt`
       (it prints the decoded passphrase: the output stays in `local/`). Is the group visible on the phone always,
@@ -116,6 +116,10 @@ on a car with CarPlay, so this is the first car without it.
       its own step next session.
 
 ## Later (not this session)
+- Which coding Wi-Fi Direct needs, and which one brings the screen-mirroring pop-up. Starting from today's coding
+  (BimmerCode backup first), switch one setting off per test (`ENT_MIRACAST_DISPLAY_SETTINGS`, `ENT_MIRACAST`,
+  `MIRRORING`, `WLAN_AP`, then `WLAN_WIFI_DIRECT`), reboot, and check: `wfd0` up, the step 6 session, the pop-up.
+  Put back any setting whose removal breaks the session. Only after step 6 works, so there is a baseline.
 - Change the Wi-Fi Direct passphrase: an old encrypted copy was public in this fork's history, so the real fix is a
   new one. First check whether re-pairing screen mirroring or a reboot changes it.
 
