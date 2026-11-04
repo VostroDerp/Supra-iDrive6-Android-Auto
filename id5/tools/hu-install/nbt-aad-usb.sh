@@ -8,15 +8,20 @@
 #
 # Order matters: knockd first, so SSH never depends on anything after it.
 # The app passes the env from /opt/aa/nbt-aad.env plus the HMI's own environment; this script
-# drops the parts that don't belong in USB mode and sets the ones runs 13-15 were tested with.
+# sets the ones runs 13-15 were tested with. nbt-aad.env must not carry the old BM3 hotspot settings
+# (NBT_AP_CFG/IF/IP/BSSID): with them the wireless side aims at the dongle network on dwc0. The
+# install below removes them from the file once.
 #
 # Install (from the repo root; /opt is on /fs/sda0, read-only until remounted):
-#   car.sh sh 'cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1'
+#   car.sh sh 'cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1; cp /opt/aa/nbt-aad.env /var/opt/aa/nbt-aad.env.v1'
+#   car.sh sh "grep -v -E '^(export )?NBT_AP_(CFG|IF|IP|BSSID)=' /opt/aa/nbt-aad.env >/var/opt/aa/nbt-aad.env.new"
 #   car.sh push id5/tools/hu-install/nbt-aad-usb.sh /var/opt/aa/nbt-aad-usb.sh
-#   car.sh sh 'mount -uw /fs/sda0 && cp /var/opt/aa/nbt-aad-usb.sh /opt/aa/nbt-aad && chmod 755 /opt/aa/nbt-aad; mount -ur /fs/sda0'
-# Back out: the same with /var/opt/aa/nbt-aad.wrapper.v1.
+#   car.sh sh 'mount -uw /fs/sda0 && cp /var/opt/aa/nbt-aad-usb.sh /opt/aa/nbt-aad && chmod 755 /opt/aa/nbt-aad && cp /var/opt/aa/nbt-aad.env.new /opt/aa/nbt-aad.env; mount -ur /fs/sda0'
+# Back out: the same with /var/opt/aa/nbt-aad.wrapper.v1 and /var/opt/aa/nbt-aad.env.v1.
 
-# The HMI's LD_PRELOAD (libEGL_X/libGLESv2/libKD_X) kills mm-renderer and the daemon at start.
+# The HMI's LD_PRELOAD (libEGL_X/libGLESv2/libKD_X, its own 3D graphics) is inherited by everything
+# the app starts. A renderer started with it dies at once and the head unit resets (dongle-era boot
+# loop). Can go once #65 is in the base and step 3 below is gone: test that on its own.
 unset LD_PRELOAD
 AA=/var/opt/aa
 CP=/fs/sda0/opt/conn
@@ -44,9 +49,7 @@ running mm-renderer || {
   $CP/bin/carplay/mm-renderer -e -v -f -k </dev/null >$AA/mmr.log 2>&1 &
 }
 
-# 4. The daemon, USB as tested in runs 13-15. The BM3 hotspot settings from nbt-aad.env go:
-#    with them the wireless side would aim at the dongle network (dwc0, its iap2.cfg).
-unset NBT_AP_CFG NBT_AP_IF NBT_AP_IP NBT_AP_BSSID
+# 4. The daemon, USB as tested in runs 13-15.
 export NBT_USB=1 NBT_USB_DIRECT=1 NBT_SPP_REREG_S=0
 export NBT_VEHICLE=${NBT_VEHICLE:-bmw}
 export AOI_CONFIG=$AA/aoi/ MM_RENDERER_CONFIG=$AA/mm-renderer.conf

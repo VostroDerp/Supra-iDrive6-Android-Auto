@@ -39,14 +39,18 @@ upstream main. Step 2 tests the newer main; step 3 tests the fix.
 ## 1. Start-up script (one reboot, ~25 min)
 `tools/hu-install/nbt-aad-usb.sh` becomes `/opt/aa/nbt-aad`, the path the iDrive app starts at boot. It starts
 knockd (once), keeps the daemon log under 8 MB, starts the renderer if none runs, and runs `/var/opt/aa/nbt-aad-base`
-with the run 13-15 settings.
-- [ ] Keep the old one and set the base: `$C sh 'cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1; cp /var/opt/aa/nbt-aad-usb7 /var/opt/aa/nbt-aad-base'`.
-- [ ] Install (`/opt` is read-only until remounted): `$C push id5/tools/hu-install/nbt-aad-usb.sh /var/opt/aa/nbt-aad-usb.sh`,
-      `$C sh 'mount -uw /fs/sda0 && cp /var/opt/aa/nbt-aad-usb.sh /opt/aa/nbt-aad && chmod 755 /opt/aa/nbt-aad; mount -ur /fs/sda0; ls -l /opt/aa/nbt-aad'`.
+with the run 13-15 settings. The settings file the app reads, `/opt/aa/nbt-aad.env`, loses the old dongle settings in
+the same remount.
+- [ ] Read the settings file the app passes on: `$C sh 'cat /opt/aa/nbt-aad.env'`. The old dongle settings
+      (`NBT_AP_CFG`, `NBT_AP_IF`, `NBT_AP_IP`, `NBT_AP_BSSID`) come out; note anything else before deciding on it.
+- [ ] Keep the old ones and set the base: `$C sh 'cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1; cp /opt/aa/nbt-aad.env /var/opt/aa/nbt-aad.env.v1; cp /var/opt/aa/nbt-aad-usb7 /var/opt/aa/nbt-aad-base'`.
+- [ ] The cleaned settings file: `$C sh "grep -v -E '^(export )?NBT_AP_(CFG|IF|IP|BSSID)=' /opt/aa/nbt-aad.env >/var/opt/aa/nbt-aad.env.new; cat /var/opt/aa/nbt-aad.env.new"`.
+- [ ] Install both (`/opt` is read-only until remounted): `$C push id5/tools/hu-install/nbt-aad-usb.sh /var/opt/aa/nbt-aad-usb.sh`,
+      `$C sh 'mount -uw /fs/sda0 && cp /var/opt/aa/nbt-aad-usb.sh /opt/aa/nbt-aad && chmod 755 /opt/aa/nbt-aad && cp /var/opt/aa/nbt-aad.env.new /opt/aa/nbt-aad.env; mount -ur /fs/sda0; ls -l /opt/aa/'`.
 - [ ] Without a reboot: stop the old stuck wrappers and any test daemon, choose Android Auto in the iDrive menu,
       plug in. Check: picture; `pidin ar` shows knockd once; log in `/var/opt/aa/nbt.log`.
 - [ ] Reboot. Check: `$C knock` works with no fallback; plug in, picture.
-- [ ] Way back: the install line with `/var/opt/aa/nbt-aad.wrapper.v1`.
+- [ ] Way back: the install line with `/var/opt/aa/nbt-aad.wrapper.v1` and `/var/opt/aa/nbt-aad.env.v1`.
 
 ## 2. Newer base (no reboot, ~15 min)
 - [ ] `$C push $U/nbt-aad-usb12-base /var/opt/aa/nbt-aad-base12`, then `$C run <N> nbt-aad-base12 NBT_VEHICLE=bmw`.
