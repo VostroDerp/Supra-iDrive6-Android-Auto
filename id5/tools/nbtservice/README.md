@@ -5,7 +5,7 @@ Status: **host-tested only, never loaded on the car.** IMPROVEMENT-PLAN A1 (opti
 A second, tiny iDrive PluginApp. It does two things and nothing else:
 
 1. **Starts knockd at boot** (A1). HmiMain3D loads it on its own, so SSH no longer depends on
-   the Android Auto app, on `/var/opt/aa/autostart`, on `nbt-aad.sh`, or on the AA app's boot
+   the Android Auto app, on `/var/opt/aa/autostart`, on the start-up script, or on the AA app's boot
    guard latching autostart off after three crash-boots.
 2. **Offers "SSH (15 min)"** in its own iDrive page (A5). Being in the car is the
    authorization: the checkbox opens knockd's window over the local control port with no
@@ -52,8 +52,8 @@ the stock FDAC unlock plus dropbear on :22, then `rm -r` of the directory above.
 /var/opt/aa/service.disable` also makes `create()` return NULL without doing anything, which
 is the softer switch once SSH works.
 
-Keep the knockd line in `nbt-aad.sh` until a cold boot has shown the plugin arming the gate.
-Both starting knockd is harmless: the second one cannot bind the port and exits.
+Keep the knockd start in the start-up script (`tools/hu-install/nbt-aad-usb.sh`) as a second
+starter. Both starting knockd is harmless: the second one cannot bind the port and exits.
 
 ## What is not verified
 

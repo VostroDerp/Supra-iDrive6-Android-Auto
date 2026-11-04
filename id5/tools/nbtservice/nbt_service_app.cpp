@@ -2,7 +2,7 @@
 // the "SSH (15 min)" toggle in the iDrive menu. IMPROVEMENT-PLAN A1 (option a) + A5.
 //
 // Why it exists: today SSH depends on the Android Auto app. HmiMain3D loads NbtAad -> NbtAad sees
-// /var/opt/aa/autostart -> it runs nbt-aad.sh -> the wrapper starts knockd. Anything that breaks that chain also
+// /var/opt/aa/autostart -> it runs the start-up script (/opt/aa/nbt-aad) -> that starts knockd. Anything that breaks that chain also
 // removes SSH: a wrapper edit, autostart moved aside for a test, or the app's boot guard latching autostart off after
 // three crash-boots. This plugin is loaded by HmiMain3D on its own and depends on none of that.
 //

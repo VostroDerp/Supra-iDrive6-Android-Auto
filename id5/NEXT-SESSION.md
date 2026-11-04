@@ -22,8 +22,8 @@ The reconnect fix only acts when a reopened phone starts with stale data, so in 
 upstream main. Step 2 tests the newer main; step 3 tests the fix.
 
 ## Before going to the car
-- [ ] Upstream: read new PRs and issues since the last session. Merged work that overlaps a step changes that
-      step, or the base build.
+- [ ] Upstream, right before leaving: read new PRs and issues since the last check. Merged work that overlaps a
+      step changes that step, or the base build.
 - [ ] Builds staged in `$U` (table above). Battery charger packed: the head unit shuts down on low voltage.
 - [ ] Laptop and phone on the home Wi-Fi (laptop internet for the fallback unlock; adb over Wi-Fi for logcat).
 
@@ -104,12 +104,15 @@ to the phone; it was tested on a car with CarPlay, so this is the first car with
 - [ ] **Audio over the Android Auto link** (#76, merged): one run on base12 with `NBT_AUDIO_MODE=browser`. Better
       sound than Bluetooth by upstream's account, but no now-playing or steering-wheel integration yet. Your choice
       afterwards.
+- [ ] **The SSH switch in the Settings menu** (after step 5): from step 5's manifest listing, find the Settings
+      anchor, change `insertStateID` in `NbtService.xml`, rebuild, reinstall, reboot. Way back: the step 5 build.
+- [ ] **A second boot hook** (IMPROVEMENT-PLAN F5), read-only: pull the stock start-up scripts and look for one that
+      runs something from `/var` or USB without a signature check. Nothing is changed tonight; a candidate becomes
+      its own step next session.
 
 ## Later (not this session)
 - Change the Wi-Fi Direct passphrase: an old encrypted copy was public in this fork's history, so the real fix is a
   new one. First check whether re-pairing screen mirroring or a reboot changes it.
-- Move the SSH switch into the Settings menu (needs step 5's anchor check).
-- A second boot hook that doesn't depend on the HMI (IMPROVEMENT-PLAN F5).
 
 ## Stop rules
 - iDrive unstable, or the HMI restarts on its own: stop that step and undo its last change. Don't debug in the car.
