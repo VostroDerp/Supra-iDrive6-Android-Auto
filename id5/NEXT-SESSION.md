@@ -103,7 +103,9 @@ on a car with CarPlay, so this is the first car without it.
       `/opt/conn/bin/wifidirect_defaults.conf`)?
 - [ ] Wireless only, USB unplugged, Bluetooth connected: `$C run <N> nbt-aad-base12 NBT_USB=0 NBT_ALT_WIFI=DIRECT NBT_VEHICLE=bmw`.
       Check: the phone joins the group, the daemon accepts on 172.16.222.1:5277, picture. Check the group name the
-      log shows against the real one (upstream calls its name lookup "mostly consistent").
+      log shows against the real one (upstream calls its name lookup "mostly consistent"). Also watch
+      `sloginfo` for the media app (`NBTMediaMainApp`) failing on `/dev/btspp0`, `audioconn -b 0xc7` failures or a
+      watchdog: upstream issue #84 sees those before a reset on a CarPlay car in wireless mode.
 - [ ] Then both on (`NBT_USB=1`, default `NBT_ALT_WIFI`): plugging in during a wireless session leaves it alone,
       and wireless never takes over a USB session. Making the start-up script run both is a separate change.
 
