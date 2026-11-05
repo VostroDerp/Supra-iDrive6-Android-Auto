@@ -37,3 +37,27 @@ Car test: NEXT-SESSION steps 4 and 5.
   network too. Only once wireless works.
 - **F8. Idle-shell timeout.** Left out on purpose (it would cut long `car.sh` runs); keep-alives already drop dead
   sessions.
+
+## G. Fixes from the 2026-11-05 car session (runs 16-25 in NEXT-SESSION)
+- **G1. Browser audio holds the source like a real media source** (first PR candidate). Today the daemon gives the
+  browser source (`0xb8`) back after `NBT_BROWSER_IDLE_S` of silence; on a pause the car's Bluetooth source then plays
+  the phone and the music resumes (runs 19-21). What the owner wants:
+  - A pause keeps the source, however long.
+  - The source is let go only when the driver changes it: a source picked in the iDrive menu, the MODE button
+    (wheel `15/02 fkt 513`), or anything else that is a deliberate source change.
+  - While another source (radio) plays, pressing play in Android Auto takes the source back and holds it again until
+    the next deliberate change.
+  - Changing the source doesn't minimise Android Auto (today MODE takes iDrive to its source screen, hiding AA).
+  - To work out at the desk: how the daemon sees a deliberate source change (bus source status, MODE, the menu),
+    the phone's play/pause state, calls (does the source come back after one), prompts while the radio plays. Host
+    tests first, then a car test with calls.
+- **G2. Volume floor 25 in browser mode.** The browser source keeps its own level with a minimum of 25 (#81). The
+  owner doesn't want the music cut (`NBT_MEDIA_GAIN_DB` rejected): find where the minimum lives (coding, the stock
+  audio manager) or a source without one.
+- **G3. Cluster now-playing in browser mode** shows the last Bluetooth song; its arrows don't reach AA (#51). Needs
+  AA to be a real media source for iDrive (the AAiDrive model). Wheel decode: `local/recon/wheel-2026-11-05/`.
+- **G4. Long-press voice** (`NBT_PTT_ASSISTANT=1`) also starts the phone's Bluetooth assistant (iDrive's own long
+  press); the two clash. Left off.
+- **G5. Renderer stall**: black screen with frames flowing (runs 20, 22); a renderer restart or a reboot fixes it.
+- **G6. #40 input leak**: not reproduced with single BACK or MEDIA presses; next: bursts of hard keys, OPTION.
+- **G7. `car.sh` ~15.5 s per call** (it knocks every time): skip the knock while SSH answers, batch calls.

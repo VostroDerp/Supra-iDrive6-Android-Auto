@@ -4,15 +4,15 @@ One owner's port of [NBT-AAD](../milestone-7/readme.md) to a BMW F36 with an NBT
 software and **no CarPlay licence**. Everything this fork adds lives in this folder; the rest of the tree is
 upstream as-is, so rebasing never conflicts and nothing here leaks into an upstream PR.
 
-## Status (2026-11-04)
+## Status (2026-11-05)
 
 | | |
 |---|---|
-| Android Auto over USB | **Works** with upstream main: video, touch, controller, Bluetooth audio, Assistant, calls, reverse, replug. |
-| Starts by itself after a reboot | Not yet. The USB start-up script is written (NEXT-SESSION step 1). |
-| Our SSH access | Works when started by hand (port knock, key only). The hardened version is built, not car-tested (steps 4-5). |
-| iDrive switched off and on with the phone plugged in | Needs a replug today. A fix is written, not car-tested (step 3). |
-| Wireless Android Auto | Next to test: the car's Wi-Fi Direct group, through upstream's `NBT_ALT_WIFI` (step 6). |
+| Android Auto over USB | **Works** with upstream main (v1.9.09): video, touch, controller, audio over Bluetooth or over USB (browser mode), Assistant, calls, reverse, replug. |
+| Starts by itself after a reboot | **Works**: the start-up script brings up SSH, the renderer and Android Auto (3 cold boots on 2026-11-05). |
+| Our SSH access | Works, started at boot (port knock, key only). The hardened version is built, not car-tested (steps 5-6). |
+| iDrive restarted with the phone plugged in | **Works with upstream's #91** (not merged yet; it's in our base build). Current main needs a replug. |
+| Wireless Android Auto | Next to test: the car's Wi-Fi Direct group, through upstream's `NBT_ALT_WIFI` (step 4). |
 
 ## Files
 
