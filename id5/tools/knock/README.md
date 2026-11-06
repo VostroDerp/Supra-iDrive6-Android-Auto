@@ -5,9 +5,11 @@ host-tested only — not on the car yet.** It implements IMPROVEMENT-PLAN §A2, 
 all of §C.
 
 **Daily access: `car.sh`** (`status`, `knock`, `sh '<cmd>'`, `push <local> <remote>`,
-`pull <remote> [local]`, `login`). It knocks when sshd :3804 is closed, then uses
-`plink -i ~/.ssh/nbt_knock.ppk -P 3804 root@169.254.199.119`; push/pull check sizes
-with `ls -l` on the HU. `legacy/hu.sh` (BM3 network, :22 password, bavarian unlock) is only
+`pull <remote> [local]`, `login`, `close`, `ssh-diag`). It knocks when sshd :3804 is closed, then
+opens one OpenSSH connection (`~/.ssh/nbt_knock.pem`, host key taken from plink's cache) that every
+later call reuses for 15 min: ~0.05 s per call instead of ~15.5 s. plink
+(`~/.ssh/nbt_knock.ppk`) is the automatic fallback, or `CAR_SSH=plink`. push/pull check sizes with
+`ls -l` on the HU. Host test: `id5/tools/car/test_car.sh` (throwaway sshd on localhost). `legacy/hu.sh` (BM3 network, :22 password, bavarian unlock) is only
 the fallback if knockd is down. The recon scripts use car.sh.
 
 Alternative to the online unlock: a small ARM daemon (`knockd.c`, statically linked) listens

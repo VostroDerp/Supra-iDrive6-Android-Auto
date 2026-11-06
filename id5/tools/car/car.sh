@@ -3,8 +3,13 @@
 #
 # Path (proven 2026-11-02): laptop on ENET -> knock.py signs knockd's challenge (dwc0:851)
 # -> knockd spawns sshd on :3804 (key-only; with knockd v1 until the HU reboots, with v2 for the
-# knock window, OPEN_S in knock.conf) -> plink with
-# ~/.ssh/nbt_knock.ppk. The stock way in over ENET is `car.sh fallback`; legacy/hu.sh is only for the old BM3 dongle path.
+# knock window, OPEN_S in knock.conf) -> one OpenSSH connection, shared by every later call for 15 min
+# (ControlMaster), with ~/.ssh/nbt_knock.pem; plink with ~/.ssh/nbt_knock.ppk if OpenSSH can't connect.
+# The stock way in over ENET is `car.sh fallback`; legacy/hu.sh is only for the old BM3 dongle path.
+#
+# Speed (2026-11-06): every plink call cost ~15.5 s, even `true`, with no knock involved: the time is spent
+# setting up each SSH connection (suspect: sshd's reverse DNS lookup of the laptop, UseDNS, which old OpenSSH
+# does by default; `car.sh ssh-diag` shows where a fresh connection waits). The shared connection pays that once.
 #
 # Usage:
 #   car.sh knock                    knock (only if :3804 is not already open)
@@ -12,7 +17,9 @@
 #   car.sh push <local> <remote>    copy a file to the HU (size-checked; +x kept)
 #   car.sh pull <remote> [local]    copy a file from the HU (default: id5/local/recon/<basename>)
 #   car.sh login                    interactive shell
-#   car.sh status                   is the HU reachable, is knockd / sshd answering
+#   car.sh status                   is the HU reachable, is knockd / sshd answering, is a shared connection up
+#   car.sh close                    drop the shared OpenSSH connection
+#   car.sh ssh-diag                 time one fresh connection step by step (where the ~15 s goes)
 #   car.sh collect <N>              after test run N: id5/local/recon/run-N/ gets the daemon logs (nbt-usbN*.log),
 #                                   pidin / fds / dev nodes / sloginfo, binary sizes, phone logcat (if adb
 #                                   sees a device), then prints the stage summary
@@ -27,10 +34,12 @@
 #                                   until media frames / session end / RUN_WAIT_S (90), then collect N.
 #                                   RUN_MMR_CONF=0 leaves out AOI_CONFIG + MM_RENDERER_CONFIG (PR #65 run).
 #
-# sh/push/pull/login knock first when :3804 is closed.
+# sh/push/pull/login knock first when :3804 is closed (not while a shared connection is up).
 # Env: HU_IP (169.254.199.119), SSH_PORT (3804), KNOCK_PORT (851), KNOCK_PPK (~/.ssh/nbt_knock.ppk),
-#      KNOCK_KEY (~/.ssh/nbt_knock.pem, used by knock.py), PLINK (plink), ID5_LOCAL (id5/local),
-#      USB_TREE (the -usb worktree, for build sizes in collect).
+#      KNOCK_KEY (~/.ssh/nbt_knock.pem, used by knock.py and OpenSSH), PLINK (plink), ID5_LOCAL (id5/local),
+#      USB_TREE (the -usb worktree, for build sizes in collect),
+#      CAR_SSH (auto: OpenSSH shared connection, plink if that fails | openssh | plink), CAR_USER (root),
+#      CAR_KNOWN_HOSTS (id5/local/car_known_hosts: made once from plink's saved host key for the HU).
 set -u
 
 HU_IP=${HU_IP:-169.254.199.119}
@@ -38,16 +47,89 @@ SSH_PORT=${SSH_PORT:-3804}
 KNOCK_PORT=${KNOCK_PORT:-851}
 PPK=${KNOCK_PPK:-$HOME/.ssh/nbt_knock.ppk}
 PLINK=${PLINK:-plink}
+KEY=${KNOCK_KEY:-$HOME/.ssh/nbt_knock.pem}
+USER_=${CAR_USER:-root}
+CAR_SSH=${CAR_SSH:-auto}
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ID5="$(cd "$HERE/../.." && pwd)"                 # id5/ (repo root/id5)
 LOCAL=${ID5_LOCAL:-$ID5/local}                     # gitignored: recon output, pulls
+KNOWN=${CAR_KNOWN_HOSTS:-$LOCAL/car_known_hosts}
+CTL=${XDG_RUNTIME_DIR:-/tmp}/car-sh-$USER_@$HU_IP-$SSH_PORT.sock
 
 die() { echo "car.sh: $*" >&2; exit 1; }
 # port_open [host] port (host defaults to HU_IP)
 port_open() { local h=$HU_IP; [ $# -gt 1 ] && { h=$1; shift; }; timeout 3 bash -c ": </dev/tcp/$h/$1" 2>/dev/null; }
-run() { "$PLINK" -ssh -batch -i "$PPK" -P "$SSH_PORT" "root@$HU_IP" "$@"; }
+
+# --- SSH transport -----------------------------------------------------------------------------------------
+# The HU's sshd is old: it signs with ssh-rsa (SHA-1) and may only offer SHA-1 key exchange / CBC ciphers, which
+# OpenSSH 8.8+ turns off by default. "+" adds them back for this host only.
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o IdentitiesOnly=yes -i "$KEY" -p "$SSH_PORT"
+          -o UserKnownHostsFile="$KNOWN" -o StrictHostKeyChecking=yes -o GlobalKnownHostsFile=/dev/null
+          -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa
+          -o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1
+          -o Ciphers=+aes128-cbc,aes256-cbc,3des-cbc -o MACs=+hmac-sha1
+          -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o LogLevel=ERROR)
+
+# known_hosts for OpenSSH from plink's cache (~/.putty/sshhostkeys: "rsa2@PORT:HOST 0xE,0xN"), so the HU's host key
+# stays the one first seen with plink instead of being trusted anew.
+make_known_hosts() {
+    [ -s "$KNOWN" ] && return 0
+    mkdir -p "$(dirname "$KNOWN")"
+    python3 - "$HOME/.putty/sshhostkeys" "$HU_IP" "$SSH_PORT" "$KNOWN" <<'PY' || return 1
+import base64, struct, sys
+cache, host, port, out = sys.argv[1:5]
+def mpint(v):
+    b = v.to_bytes((v.bit_length() + 8) // 8, "big")   # one spare byte keeps the sign bit clear
+    return struct.pack(">I", len(b)) + b
+for line in open(cache):
+    k, _, val = line.strip().partition(" ")
+    if k == "rsa2@%s:%s" % (port, host):
+        e, n = (int(x, 16) for x in val.split(","))
+        blob = struct.pack(">I", 7) + b"ssh-rsa" + mpint(e) + mpint(n)
+        open(out, "w").write("[%s]:%s ssh-rsa %s\n" % (host, port, base64.b64encode(blob).decode()))
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+master_up() { [ -S "$CTL" ] && ssh -o ControlPath="$CTL" -O check "$USER_@$HU_IP" >/dev/null 2>&1; }
+
+# Start the shared connection: authenticates once, then waits in the background for 15 min of idle (ControlPersist).
+# Its own stdio goes to /dev/null so a $(car.sh ...) never waits on it. Errors land in $LOCAL/car-ssh.err.
+start_master() {
+    make_known_hosts || { echo "car.sh: no saved host key for $HU_IP:$SSH_PORT in ~/.putty/sshhostkeys" > "$LOCAL/car-ssh.err"; return 1; }
+    ssh "${SSH_OPTS[@]}" -o ControlMaster=yes -o ControlPath="$CTL" -o ControlPersist=900 -fN "$USER_@$HU_IP" \
+        </dev/null >/dev/null 2>"$LOCAL/car-ssh.err" && master_up
+}
+
+# TRANSPORT = the argv that runs a remote command (set once per car.sh process, by pick_transport).
+TRANSPORT=()
+# After OpenSSH failed in auto mode, use plink for 15 min without trying again (a failed try can cost as much as a
+# plink call). `car.sh close` clears it.
+openssh_failed_recently() {
+    [ "$CAR_SSH" = auto ] && [ -f "$CTL.failed" ] && [ $(( $(date +%s) - $(stat -c %Y "$CTL.failed") )) -lt 900 ]
+}
+pick_transport() {
+    [ ${#TRANSPORT[@]} -gt 0 ] && return 0
+    local tried=0
+    if [ "$CAR_SSH" != plink ] && command -v ssh >/dev/null && ! openssh_failed_recently; then
+        if master_up || { tried=1; start_master; }; then
+            rm -f "$CTL.failed"
+            TRANSPORT=(ssh "${SSH_OPTS[@]}" -o ControlMaster=no -o ControlPath="$CTL" "$USER_@$HU_IP")
+            return 0
+        fi
+        touch "$CTL.failed"
+    fi
+    [ "$CAR_SSH" = openssh ] && die "OpenSSH could not connect: $(tail -n 3 "$LOCAL/car-ssh.err" 2>/dev/null)"
+    [ "$CAR_SSH" = auto ] && [ $tried = 1 ] && echo "car.sh: OpenSSH could not connect" \
+        "($(tail -n 1 "$LOCAL/car-ssh.err" 2>/dev/null)): using plink, ~15 s per call, for the next 15 min" \
+        "(car.sh close tries OpenSSH again)" >&2
+    TRANSPORT=("$PLINK" -ssh -batch -i "$PPK" -P "$SSH_PORT" "$USER_@$HU_IP")
+}
+run() { pick_transport && "${TRANSPORT[@]}" "$@"; }
 
 knock() {
+    master_up && return 0                          # a shared connection outlives the knock window
     port_open "$SSH_PORT" && return 0
     port_open "$KNOCK_PORT" || die "neither sshd :$SSH_PORT nor knockd :$KNOCK_PORT answers on $HU_IP" \
         "(ENET cable / laptop on 169.254.x? HU awake? knockd started by the boot wrapper?)"
@@ -106,10 +188,12 @@ case "$cmd" in
         [ $# -eq 2 ] || die "usage: car.sh push <local> <remote>"
         [ -f "$1" ] || die "no local file $1"
         knock || exit 1
-        run "cat > '$2'" < "$1" || die "push failed"
-        want=$(stat -c %s "$1"); got=$(remote_size "$2")
+        x=""; [ -x "$1" ] && x="chmod +x '$2' && "
+        # One call: copy, keep +x, and report the size (cat reads stdin to EOF before the rest runs).
+        out=$(run "cat > '$2' && ${x}ls -l '$2'" < "$1") || die "push failed"
+        got=$(echo "$out" | awk 'NR==1 {print $5}')
+        want=$(stat -c %s "$1")
         [ "$want" = "$got" ] || die "size mismatch: local $want, remote ${got:-?} ($2)"
-        if [ -x "$1" ]; then run "chmod +x '$2'" || die "chmod failed"; fi
         echo "pushed $1 -> $2 ($got bytes)"
         ;;
     pull)
@@ -147,7 +231,8 @@ case "$cmd" in
         done
         run 'pidin ar' > "$out/pidin-ar.txt" 2>&1
         # pidin fds can block on a busy resource manager (run 13): cap it.
-        timeout 60 "$PLINK" -ssh -batch -i "$PPK" -P "$SSH_PORT" "root@$HU_IP" 'pidin fds' > "$out/pidin-fds.txt" 2>&1 \
+        pick_transport
+        timeout 60 "${TRANSPORT[@]}" 'pidin fds' > "$out/pidin-fds.txt" 2>&1 \
             || echo "(pidin fds stopped after 60 s)" >> "$out/pidin-fds.txt"
         run 'ls -l /dev/android* /dev/oap* /dev/btspp* 2>&1' > "$out/dev-nodes.txt" 2>&1
         run 'sloginfo' > "$out/sloginfo.txt" 2>&1
@@ -188,10 +273,17 @@ case "$cmd" in
         sleep 3
         run "pidin ar | grep -v grep | grep -q '$AA/$BIN'" || die "$BIN is not running 3 s after launch: see $AA/nbt-usb$N-stdout.log"
         echo "[run $N] $BIN is running. PLUG THE PHONE IN NOW. Following the log for up to ${RUN_WAIT_S:-90} s (Ctrl-C stops waiting)."
+        # Count the milestones on the HU (grep -c per pattern) instead of copying the whole log every 3 s.
+        POLL=""
+        for p in 'connected to io-usb' 'switch to accessory mode sent' '\[UsbDirect\] accessory [0-9a-f][0-9a-f][0-9a-f][0-9a-f]:' \
+                 'VersionResponse:' 'TLS Handshake Complete' 'Failed to decrypt' 'Streaming Media Frame' \
+                 'ByeByeRequest from the phone' 'closed after'; do
+            POLL="$POLL echo \"\$(grep -c -E '$p' '$LOG' 2>/dev/null) $p\";"
+        done
         t=0; last=""
         while [ "$t" -lt "${RUN_WAIT_S:-90}" ]; do
             sleep 3; t=$((t + 3))
-            st=$(run "cat '$LOG'" 2>/dev/null | grep -oE 'connected to io-usb|switch to accessory mode sent|\[UsbDirect\] accessory [0-9a-f]{4}:|VersionResponse:|TLS Handshake Complete|Failed to decrypt|Streaming Media Frame|ByeByeRequest from the phone|closed after' | sort | uniq -c | tr -s ' ' | tr '\n' ';')
+            st=$(run "$POLL" 2>/dev/null | awk '$1 > 0 {n = $1; $1 = ""; sub(/^ /, ""); gsub(/\\/, ""); printf "%s %s;", n, $0}')
             [ "$st" != "$last" ] && { echo "  ${t}s: ${st:-nothing yet}"; last=$st; }
             case "$st" in *"Streaming Media Frame"*) echo "[run $N] media frames: give it a moment, then check the screen"; sleep 5; break ;; esac
             case "$st" in *ByeByeRequest*|*"closed after"*) echo "[run $N] the session ended"; break ;; esac
@@ -241,12 +333,30 @@ case "$cmd" in
         stages "$1"
         ;;
     login)
-        knock && exec "$PLINK" -ssh -t -i "$PPK" -P "$SSH_PORT" "root@$HU_IP"
+        knock || exit 1
+        pick_transport
+        if [ "${TRANSPORT[0]}" = ssh ]; then exec ssh "${SSH_OPTS[@]}" -t -o ControlMaster=no -o ControlPath="$CTL" "$USER_@$HU_IP"
+        else exec "$PLINK" -ssh -t -i "$PPK" -P "$SSH_PORT" "$USER_@$HU_IP"; fi
         ;;
     status)
         ping -c 1 -W 1 "$HU_IP" >/dev/null 2>&1 && echo "ping      $HU_IP: up" || echo "ping      $HU_IP: no answer"
         port_open "$KNOCK_PORT" && echo "knockd    :$KNOCK_PORT open" || echo "knockd    :$KNOCK_PORT closed"
         port_open "$SSH_PORT" && echo "sshd      :$SSH_PORT open" || echo "sshd      :$SSH_PORT closed (knock first)"
+        master_up && echo "shared    OpenSSH connection up ($CTL)" || echo "shared    no OpenSSH connection (the next call opens one)"
+        ;;
+    close)
+        master_up && ssh -o ControlPath="$CTL" -O exit "$USER_@$HU_IP" 2>/dev/null; rm -f "$CTL.failed"
+        echo "shared connection closed"
+        ;;
+    ssh-diag)
+        # A fresh connection (not the shared one), timed per debug line: a long gap shows where the HU waits.
+        knock || exit 1
+        make_known_hosts || die "no saved host key for $HU_IP:$SSH_PORT in ~/.putty/sshhostkeys"
+        t0=$EPOCHREALTIME
+        ssh "${SSH_OPTS[@]}" -o LogLevel=DEBUG1 -o ControlPath=none "$USER_@$HU_IP" true 2>&1 | while IFS= read -r l; do
+            printf '%7.2f  %s\n' "$(echo "$EPOCHREALTIME - $t0" | bc)" "$l"
+        done | grep -v -E 'debug1: (Reading|configuration|/etc|Local version|compat_banner|kex: |SSH2_MSG_KEX|expecting|rekey|Remote: )'
+        echo "total $(echo "$EPOCHREALTIME - $t0" | bc) s (a gap of ~5/10/15 s before 'Authenticated' = the HU's DNS lookup)"
         ;;
     *)
         sed -n '2,/^set -u/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'

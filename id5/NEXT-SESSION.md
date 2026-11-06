@@ -1,14 +1,12 @@
 # Next car session
 
-**Goal: a car that is usable every day.** After a cold boot, Android Auto over USB and our SSH come up by
-themselves, switching iDrive off and on doesn't need a replug, SSH answers only on the cable, and wireless works.
-Features upstream is building (car GPS, cluster arrows, audio over the Android Auto link) wait until they are
-merged, and then become one setting on our base build.
+**Goal: a daily build that doesn't go black, and the pause fix tested in the car.** The base moves to v1.9.19, which
+moves the volume pill off the Android Auto picture's surface (the black screen with the pill showing, run 20, and
+again on a drive on 2026-11-06). The pause fix (#110, branch `browser-hold`) gets its first car test, with the data
+#110 still needs: what the bus shows when a source is picked in the iDrive menu.
 
-Steps run in order, one change each. The order: our own way in first, then a daily-usable Android Auto, upstream's
-changes, the audio modes and steering wheel, wireless, and last the improvements to our way in. Times are
-estimates of the typing and checks, not measured: note the clock at the start of each step in the run log. A step that fails is undone and the session moves on to the next step that
-doesn't depend on it. Results go into the run log at the bottom.
+Steps run in order, one change each. A step that fails is undone and the session moves on to the next step that
+doesn't depend on it. Note the clock at the start of each step. Results go into the run log at the bottom.
 
 `C=id5/tools/car/car.sh` (from the repo root), `U=../Supra-iDrive6-Android-Auto-usb/milestone-7` (staged builds).
 
@@ -16,130 +14,79 @@ doesn't depend on it. Results go into the run log at the bottom.
 
 | On the head unit | Build | What it is | Status |
 |---|---|---|---|
-| `nbt-aad-usb7` (already there) | v1.8.72-main-usb | upstream main after the USB merge (#42) | **Proven**: runs 13-15 |
-| `nbt-aad-base13` (push `$U/nbt-aad-usb13-base`) | v1.9.09-most-base13 (main e279e55) | current upstream main, unchanged (v1.9.09 or later: #65 renderer start, #78 MOST rewrite, #76 audio, Wi-Fi Direct, volume display) | not car-tested |
-| `nbt-aad-base13-pr91` (push `$U/nbt-aad-usb13-pr91`) | v1.9.09-most-base13-pr91 (main + #91 at 0b38f62) | base13 + Tom's #91 (USB recovery) | step 3 only |
-| `test_controls` (push `$U/test_controls-base13`) | built from the same main | the controller monitor | only if step 2's controller check fails |
-| `nbt-aad-base` | a copy of one of the above | what the start-up script runs | `usb7` first; `base13` once step 2 passes |
+| `nbt-aad-base` (there now) | v1.9.09-most-base13-pr91 | upstream main e279e55 + Tom's #91 | daily build since run 25; black screen seen once on a drive |
+| `nbt-aad-base13-pr91` (there) | the same | the way back | |
+| `nbt-aad-base14` (push `$U/nbt-aad-base14`) | v1.9.19-safety-base14 | upstream main a9fac36 + #91 (0b38f62) + `browser-hold` (a55c82f); the hold is off unless `NBT_BROWSER_HOLD=1` | host tests 57/57, QNX build, not car-tested |
 
-base12 (main 8545fe9 + our reconnect fix) is retired: Tom's #91 does the same job and more, and upstream comes
-first. #91 also acts in normal sessions (it resets a phone found in accessory mode at start and says goodbye to the
-phone on exit), so it gets its own run (step 3) and stays out of the base until that passes.
+The iDrive app stays rhmiapp-22b this session (it works with v1.9.19; updating it is its own step, "Later").
 
 ## Before going to the car
-- [ ] Upstream, right before leaving: read new PRs and issues since the last check. Merged work that overlaps a
-      step changes that step, or the base build.
-- [x] Build from that main: base13, base13-pr91 and `test_controls`, each with its own version string. Host tests
-      for the USB and controller code. Staged in `$U`.
-- [ ] Battery charger packed: the head unit shuts down on low voltage.
-- [ ] Laptop and phone on the home Wi-Fi (laptop internet for the fallback unlock; adb over Wi-Fi for logcat).
+- [ ] Upstream, right before leaving: new PRs, issues and replies on #110 and #91. Merged work that overlaps a step
+      changes that step or the base build.
+- [ ] Battery charger packed. Laptop and phone on the home Wi-Fi (fallback unlock; adb for logcat).
 
-## Getting in (every session, and after every reboot until step 1 works)
+## Getting in
 1. ENET cable in, charger on. `$C status`, then `$C knock`.
-2. If the knock port is closed (nothing of ours starts at boot yet): `$C fallback status` (diag port open), `$C
-   fallback unlock` (the stock path; opens the stock sshd until the next reboot), then start knockd through it:
-   `$C fallback sh '/var/opt/aa/knockd /var/opt/aa/knock.conf >>/var/opt/aa/knock.log 2>&1 </dev/null'` (it
-   detaches itself), then `$C knock`.
-3. Before a test run without the start-up script, start the video renderer by hand (`tools/car/start-aa.sh`
-   shows the line). With the script installed, it does this itself.
+2. The first `$C sh` opens one shared SSH connection (one wait of ~15 s); every call after it takes well under a
+   second for 15 min of idle. `$C status` shows it. If OpenSSH can't connect, car.sh says so and uses plink (~15 s per
+   call): note the message, carry on, and look at `id5/local/car-ssh.err` at the desk.
+3. If the knock port is closed: `$C fallback status`, `$C fallback unlock`, start knockd through it
+   (`$C fallback sh '/var/opt/aa/knockd /var/opt/aa/knock.conf >>/var/opt/aa/knock.log 2>&1 </dev/null'`), `$C knock`.
 
-## 1. Start-up script (one reboot, ~15 min plus the reboot)
-`tools/hu-install/nbt-aad-usb.sh` becomes `/opt/aa/nbt-aad`, the path the iDrive app starts at boot. It starts
-knockd (once), keeps the daemon log under 8 MB, starts the renderer if none runs, and runs `/var/opt/aa/nbt-aad-base`
-with the run 13-15 settings. The settings file the app reads, `/opt/aa/nbt-aad.env`, loses the old dongle settings in
-the same remount.
-- [ ] Read the settings file the app passes on: `$C sh 'cat /opt/aa/nbt-aad.env'`. The old dongle settings
-      (`NBT_AP_CFG`, `NBT_AP_IF`, `NBT_AP_IP`, `NBT_AP_BSSID`) come out; note anything else before deciding on it.
-- [ ] Keep the old ones and set the base: `$C sh 'cp /opt/aa/nbt-aad /var/opt/aa/nbt-aad.wrapper.v1; cp /opt/aa/nbt-aad.env /var/opt/aa/nbt-aad.env.v1; cp /var/opt/aa/nbt-aad-usb7 /var/opt/aa/nbt-aad-base'`.
-- [ ] The cleaned settings file: `$C sh "grep -v -E '^(export )?NBT_AP_(CFG|IF|IP|BSSID)=' /opt/aa/nbt-aad.env >/var/opt/aa/nbt-aad.env.new; cat /var/opt/aa/nbt-aad.env.new"`.
-- [ ] Install both (`/opt` is read-only until remounted): `$C push id5/tools/hu-install/nbt-aad-usb.sh /var/opt/aa/nbt-aad-usb.sh`,
-      `$C sh 'mount -uw /fs/sda0 && cp /var/opt/aa/nbt-aad-usb.sh /opt/aa/nbt-aad && chmod 755 /opt/aa/nbt-aad && cp /var/opt/aa/nbt-aad.env.new /opt/aa/nbt-aad.env; mount -ur /fs/sda0; ls -l /opt/aa/'`.
-- [ ] Keep the repo copy current: `$C pull /opt/aa/nbt-aad.env id5/tools/hu-install/nbt-aad.env` (commit it after the
-      session).
-- [ ] Without a reboot: stop the old stuck wrappers and any test daemon, choose Android Auto in the iDrive menu,
-      plug in. Check: picture; `pidin ar` shows knockd once; log in `/var/opt/aa/nbt.log`.
-- [ ] Reboot. Check: `$C knock` works with no fallback; plug in, picture.
-- [ ] Way back: the install line with `/var/opt/aa/nbt-aad.wrapper.v1` and `/var/opt/aa/nbt-aad.env.v1`.
+## 1. Read-only first (~5 min)
+- [ ] **The drive's black screen, before anything writes the logs:** `$C pull /var/opt/aa/nbt.log
+      id5/local/recon/drive-2026-11-06/nbt.log`, the same for `nbt.log.1` (if there) and `/var/opt/aa/mmr.log`, and
+      `$C sh sloginfo > id5/local/recon/drive-2026-11-06/sloginfo.txt`. At the desk: the session that went black,
+      `[VolOsd] first frame ... got z=0` (runs 19, 20, 22: z=0; working runs: z=999) or the renderer log going silent
+      (run 22).
+- [ ] **Where SSH's 15 s go:** `$C ssh-diag`. A gap of ~5/10/15 s just before `Authenticated` is sshd's DNS lookup
+      of the laptop (step 2 fixes it); a gap anywhere else: note the lines, skip step 2.
+- [ ] `$C sh 'cat /var/opt/aa/sshd_config; pidin ar | grep -i sshd'` (the live config and how sshd runs).
 
-## 2. Newer base (no reboot, ~15 min)
-#78 rewrote the code between the car's bus and the controller. Nobody has tested the controller on it in a car yet,
-and ours isn't the Supra it was tuned on, so the controller gets a full check, not one turn. The two log settings
-only add log lines, so a failure already has the raw data.
-- [ ] `$C push $U/nbt-aad-usb13-base /var/opt/aa/nbt-aad-base13`, then
-      `$C run <N> nbt-aad-base13 NBT_VEHICLE=bmw NBT_MOST_LOG=1 NBT_KNOB_RAW=1`.
-- [ ] Controller, each one, noting any that do nothing or the wrong thing: rotate 3 clicks each way, push, tilt
-      up/down/left/right, then MENU, BACK (a short press, and a 2.5 s hold to minimize), OPTION, COM, MEDIA, NAV,
-      MAP.
-- [ ] Volume knob: the new volume display shows over the picture and goes away.
-- [ ] What runs 13-15 checked: picture, touch, Bluetooth audio and its resume, Assistant, a call, reverse (the
-      parking-sensor view shows, then Android Auto comes back), replug. The volume display is new and on by default;
-      on a camera car it upsets the reverse view (#102): if ours goes wrong, the same check with `NBT_VOL_OSD=0`.
-- [ ] Steering wheel (2a) in the same run.
-- [ ] Passes: make it the base, `$C sh 'cd /var/opt/aa && cp nbt-aad-base13 nbt-aad-base.new && mv nbt-aad-base.new nbt-aad-base'`,
-      and check once through the start-up script (iDrive menu or a reboot). Fails: keep usb7 as the base; the
-      log goes upstream as a report.
+## 2. sshd without the DNS lookup (no reboot, ~10 min; only if step 1 showed the gap)
+The shared connection from "Getting in" stays open the whole step: it is the way back if the new sshd doesn't start.
+- [ ] `$C sh 'cd /var/opt/aa && cp sshd_config sshd_config.v1 && cp sshd_config sshd_config.new && echo "UseDNS no" >> sshd_config.new && /usr/sbin/sshd -t -f sshd_config.new && echo SYNTAX OK'`.
+      No `SYNTAX OK`: stop here (the live file is unchanged).
+- [ ] `$C sh 'cd /var/opt/aa && mv sshd_config.new sshd_config && kill $(cat sshd.pid)'` (the listener only; the
+      shared connection is a separate process), then `python3 id5/tools/knock/knock.py 169.254.199.119` (knockd starts
+      sshd with the new file), then `$C ssh-diag`. Expect: total ~1 s.
+- [ ] Way back: `cp sshd_config.v1 sshd_config`, kill and knock the same way; or the fallback unlock.
 
-**If the controller is wrong.** usb7 worked with the default (Supra) settings, so first sort the failure:
-- Worked on usb7, broken on base13: a regression in #78. The base13 log is the report; the fix belongs in the shared
-  code, which every car runs.
-- A key lands in another slot, or the knob runs backwards: the per-car settings for that already exist
-  (`NBT_KEY_<slot>`, `NBT_KNOB_INVERT`, `NBT_KNOB_INST` in `nbt-aad.env`), so Tom's car is not affected.
-- Either way, capture the car's own controller messages for the mapping (~10 min): stop the daemon,
-  `$C push $U/test_controls-base13 /var/opt/aa/test_controls`, `$C login`, then
-  `/var/opt/aa/test_controls -w -o /var/opt/aa/controls.env -l /var/opt/aa/controls-raw.log` (it asks for each
-  control in turn, 15 s each). Pull both files to `id5/local/recon/controls-<date>/`.
+## 3. base14, hold off (no reboot, ~15 min)
+- [ ] `$C push $U/nbt-aad-base14 /var/opt/aa/nbt-aad-base14`.
+- [ ] `$C run 26 nbt-aad-base14 NBT_VEHICLE=bmw NBT_AUDIO_MODE=browser NBT_MOST_LOG=1`. Check:
+      - picture; `[VolOsd]` lines name surface 1281 (first time on an ID5: the pill was moved for the Supra);
+      - volume up/down on the wheel and the knob: the pill shows, the picture stays;
+      - reverse with the parking sensors, then back to drive: Android Auto steps aside and comes back;
+      - a quick controller round (turn, push, BACK, MENU);
+      - the iDrive app's `hold:` lines in `sloginfo` behave as with base13 (22b with v1.9.19).
+      Prediction: all as base13, the pill above the picture. A black screen: note the time, `$C collect` anyway, and
+      restart the renderer (`pidin ar | grep mm-renderer`, kill it, the start-up script's step 3 line).
 
-## 2a. Steering wheel, Bluetooth audio (in the step 2 run, ~10 min)
-This wheel has no next/previous buttons: the scroll wheel opens the cluster's now-playing list (previous above the
-song, next and the coming songs below), and pressing the wheel plays the highlighted entry. The head unit fills that
-list and gets the choice back, so the cluster screen matters as much as the log.
+## 4. Pause fix (#110): `NBT_BROWSER_HOLD=1` (no reboot, ~25 min)
+`$C run 27 nbt-aad-base14 NBT_VEHICLE=bmw NBT_AUDIO_MODE=browser NBT_BROWSER_HOLD=1 NBT_MOST_LOG=1`. Before each
+part: `$C sh "echo '==== MARK 4x <what> ====' >>/var/opt/aa/nbt-usb27.log"`, and tell me what the car did.
+- [ ] a. Music playing, pause for 60 s. Prediction: stays paused; no `releasing the browser audio source` line.
+- [ ] b. Pause and play quickly, 5+ times in 30 s. Prediction: never resumes by itself (run 19 did, after 0.3-2.8 s).
+- [ ] c. MODE once. Prediction: the radio (or the next source) sounds, the phone pauses: `the driver changed the
+      audio source (MODE)`, `audio focus -> phone: LOSS`. Note whether AA stays on screen (it went to iDrive's source
+      screen before).
+- [ ] d. Play in Android Auto. Prediction: the phone asks for focus, AA takes the source, the radio stops.
+- [ ] e. Start a Maps route, so a prompt plays while the radio is on (after c again). Prediction: the prompt cuts in,
+      then the radio comes back.
+- [ ] f. **For #110, the menu source change:** one MARK each, ~5 s apart: iDrive menu -> Radio, -> Bluetooth audio,
+      -> Android Auto. Prediction: no release (not decoded yet), so the radio stays silent: the capture is the point.
+- [ ] g. A call (ring the phone from another phone), answer, hang up. Note: does the music come back by itself.
+- [ ] h. Unplug, replug, and pause within 10 s of the music starting (run 20's quick resume at session start).
+- [ ] Then `$C collect 27`. At the desk: the menu source messages, then the menu trigger on `browser-hold`.
 
-Music playing from Android Auto. One control at a time: before each, a marker line goes into the run's log
-(`$C sh "echo '==== MARK <control> ====' >>/var/opt/aa/nbt-usb<N>.log"`; the daemon appends to that file, so the
-lines interleave). Then that control as written, about 3 s apart, and say what the car and the phone did. Early in
-the run: `NBT_MOST_LOG` keeps at most 200 lines per message type. Skip any control the wheel doesn't have.
-1. Scroll down 1 notch, 3 times (one step at a time down the list), then wait for the list to close.
-2. Scroll up 1 notch, 3 times.
-3. Scroll to "next", press. 4. Scroll to "previous", press. 5. Scroll to a song further down the list, press.
-6. Volume up 3 times, down 3 times. 7. Mode, once per source, until back to Bluetooth. 8. Voice button, a short
-   press.
-- [ ] The cluster list shows the phone's songs (the same as Android Auto shows), and each press plays what was
-      highlighted.
-- [ ] Volume changes, and the volume display shows.
-- [ ] Mode goes through the sources; back on Bluetooth, the Android Auto music carries on.
-- [ ] Voice button: does what iDrive normally does; the log shows `[PTT] voice button released`.
+## Then the base (if 3 passes; 4 only decides the env setting)
+- [ ] `$C sh 'cd /var/opt/aa && cp nbt-aad-base14 nbt-aad-base.new && mv nbt-aad-base.new nbt-aad-base'`
+      (`nbt-aad-base13-pr91` is the way back). The hold goes into `/opt/aa/nbt-aad.env` only if 4 a-e passed: that
+      needs the `/fs/sda0` remount (the install lines at the top of `tools/hu-install/nbt-aad-usb.sh` show how).
+- [ ] Reboot with the phone plugged in. Check: picture without a replug (#91), knockd up.
 
-## 2b. Browser audio (no reboot, ~15 min; after step 2)
-Sound over the Android Auto link instead of Bluetooth (#76). Upstream says it sounds better, but has no now-playing
-and no steering-wheel integration yet (#51). That makes the steering-wheel results here data for #51, not a failure.
-- [ ] `$C run <N> nbt-aad-base13 NBT_VEHICLE=bmw NBT_AUDIO_MODE=browser NBT_MOST_LOG=1`.
-- [ ] Music plays through the car with Bluetooth audio not in use (log: `[Main] audio mode: browser`); a nav prompt
-      lowers the music; listen for crackling (#81 reports it on an X3); after a call, the music comes back (upstream
-      doesn't know yet).
-- [ ] The 2a sequence twice, with markers: once with iDrive's source on Bluetooth (the same phone) before Android
-      Auto plays, once with it on the radio. Each time, note what the cluster list shows and what a press does.
-      The idea to check: Android Auto's music still runs on the phone, so iDrive's Bluetooth source may still list
-      the songs and send next/previous to the phone, while the sound comes over the Android Auto link. On the radio,
-      a press probably changes the station instead (the kind of thing #40 reports).
-- [ ] Which mode the base uses is your choice afterwards (one line in `nbt-aad.env`).
-
-## 3. iDrive off and on with the phone plugged in (no reboot, ~10 min)
-The case that needed a replug on 2026-11-03: the head unit ends the session after 2 s of silence, reopens the same
-USB connection, and the phone carries on with its old encrypted session. Tom's #91 gives such a session up after
-16 frames it can't decrypt and resets the phone's USB connection, as a replug would (at most 2 resets in 2 minutes).
-- [ ] `$C push $U/nbt-aad-usb13-pr91 /var/opt/aa/nbt-aad-base13-pr91`. The phone stays plugged in from the last
-      run, so `$C run <N> nbt-aad-base13-pr91 NBT_VEHICLE=bmw` also tests the reset at start: log
-      `[UsbAccessory] ...: resetting it`, `[UsbDirect] ...: USB reset done`, then a picture.
-- [ ] Picture up, then iDrive off and on with its power button, phone left plugged in.
-- [ ] Check the log: `none of the first ... encrypted frames could be decrypted`, `resetting it`, `USB reset done`,
-      then a new session. The picture comes back without a replug.
-- [ ] Stop the daemon with the picture up (`$C sh` kill of the daemon): `ByeByeRequest to the phone: sent`, and the
-      phone leaves Android Auto cleanly.
-- [ ] If the phone stays stuck: note what the phone shows and whether the log says `USB resets did not help`. The
-      result goes on #91 either way. Passes: wait for #91 to merge, then it comes into the base with the next
-      main.
-
-## 4. Wireless over Wi-Fi Direct (no reboot, ~15-20 min)
+## 5. Wireless over Wi-Fi Direct (no reboot, ~15-20 min)
 The car runs its Wi-Fi Direct group at boot even without CarPlay, since Wi-Fi and screen-mirroring coding was switched
 on with BimmerCode (findings.md, Wi-Fi; which setting matters is not tested yet). Upstream's `NBT_ALT_WIFI=DIRECT` offers that group to the phone; it was tested
 on a car with CarPlay, so this is the first car without it.
@@ -147,7 +94,7 @@ on a car with CarPlay, so this is the first car without it.
       (it prints the decoded passphrase: the output stays in `local/`). Is the group visible on the phone always,
       or only during iDrive's screen-mirroring pairing? Which band (`grep -i -E "chan|band|freq|hw_mode"` in
       `/opt/conn/bin/wifidirect_defaults.conf`)?
-- [ ] Wireless only, USB unplugged, Bluetooth connected: `$C run <N> nbt-aad-base13 NBT_USB=0 NBT_ALT_WIFI=DIRECT NBT_VEHICLE=bmw`.
+- [ ] Wireless only, USB unplugged, Bluetooth connected: `$C run <N> nbt-aad-base14 NBT_USB=0 NBT_ALT_WIFI=DIRECT NBT_VEHICLE=bmw`.
       Check: the phone joins the group, the daemon accepts on 172.16.222.1:5277, picture. Check the group name the
       log shows against the real one (upstream calls its name lookup "mostly consistent"). Also watch
       `sloginfo` for the media app (`NBTMediaMainApp`) failing on `/dev/btspp0`, `audioconn -b 0xc7` failures or a
@@ -155,7 +102,7 @@ on a car with CarPlay, so this is the first car without it.
 - [ ] Then both on (`NBT_USB=1`, default `NBT_ALT_WIFI`): plugging in during a wireless session leaves it alone,
       and wireless never takes over a USB session. Making the start-up script run both is a separate change.
 
-## 5. knockd v2 (no reboot for the side-by-side test, ~15 min)
+## 6. knockd v2 (no reboot for the side-by-side test, ~15 min)
 v2 answers only on the cable and the car's Wi-Fi, opens SSH for a limited window, and fixes the review findings
 (IMPROVEMENT-PLAN A2, A3, A8, C). Procedure: `tools/knock/README.md`, "Deploying v2 over v1".
 - [ ] First, read-only: `$C sh 'pfctl -a filter_OBD -s rules; pfctl -s Interfaces'` (how the cable gets past the
@@ -163,7 +110,7 @@ v2 answers only on the cable and the car's Wi-Fi, opens SSH for a limited window
 - [ ] v2 side by side on a test port with its test configs, knock and log in. Then swap it in, with v1 kept as
       `knockd.v1`, and check a cold boot through the start-up script.
 
-## 6. NbtService (two reboots, ~20 min plus the reboots; after step 5)
+## 7. NbtService (two reboots, ~20 min plus the reboots; after step 6)
 An iDrive plugin that starts knockd at boot without the Android Auto app, and holds an "SSH for 15 minutes" switch
 (IMPROVEMENT-PLAN A1, A5). Install: `tools/nbtservice/README.md`, to `/var/opt/hmi/data/ID5/Plugins/NbtService`.
 - [ ] Read-only first: `$C sh 'ls -R /opt/hmi /var/opt/hmi 2>/dev/null | grep -i manifest'` (where stock
@@ -174,15 +121,6 @@ An iDrive plugin that starts knockd at boot without the Android Auto app, and ho
       Android Auto app no longer starts the start-up script, so if `$C knock` works, NbtService started knockd.
       Restore with the reverse `mv` (next boot; start AA from the menu meanwhile).
 - [ ] Way back: `touch /var/opt/aa/service.disable`, or remove the plugin folder.
-
-## If time
-- [ ] **The SSH switch in the Settings menu** (after step 6): from step 6's manifest listing, find the Settings
-      anchor, change `insertStateID` in `NbtService.xml`, rebuild, reinstall, reboot. Way back: the step 6 build.
-- [ ] **Inventory of what's on the head unit** (read-only, feeds the tidy-up below):
-      `$C sh 'ls -la /opt/aa /var/opt/aa /var/opt/aa/*/ /opt/hmi/ID5/data/ro/Plugins/NbtAad' > id5/local/recon/inventory-<date>.txt`.
-- [ ] **A second boot hook** (IMPROVEMENT-PLAN F5), read-only: pull the stock start-up scripts and look for one that
-      runs something from `/var` or USB without a signature check. Nothing is changed tonight; a candidate becomes
-      its own step next session.
 
 ## Later (not this session)
 **Tidy-up: only what this car needs, nothing left over from the dongle and Devin days.** One change per test.
@@ -199,8 +137,10 @@ An iDrive plugin that starts knockd at boot without the Android Auto app, and ho
   `MM_RENDERER_CONFIG` in the env file.
 - #65 is merged (2026-11-04): drop the renderer start from the wrapper. Then replace its `unset LD_PRELOAD` with
   upstream's `NBT_CHILD_NO_PRELOAD=1` (#84) in `nbt-aad.env`, one change per test (UPSTREAM-WATCH has the trap).
-- Update the iDrive app to the release matching the base build (the installed one is an older release, unmodified;
-  the repo's `hu-install/plugin/NbtAad.xml` also differs from upstream main).
+- Update the iDrive app to the release matching the base build: the car has rhmiapp-22b (Nov 1), upstream is at
+  rhmiapp-37. 22b works with v1.9.19 (it takes any non-zero overlay as "Android Auto on screen"), but the step-aside
+  work since (camera / safety / warning screens, rhmiapp-35..37) is all in the app, and it may matter for G6 (#40).
+  Its own step, with a remount of `/fs/sda0`; the repo's `hu-install/plugin/NbtAad.xml` also differs from upstream.
 - Then decide whether the wrapper stays (knockd start, log rotation, the base copy) or `/opt/aa/nbt-aad` becomes the
   daemon itself, as upstream installs it.
 - In the repo: `tools/legacy/` (the dongle, hotspot and unlock-relay tools) can go once nothing in it is needed for

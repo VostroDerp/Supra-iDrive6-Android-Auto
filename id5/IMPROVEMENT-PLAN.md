@@ -48,9 +48,10 @@ Car test: NEXT-SESSION steps 4 and 5.
   - While another source (radio) plays, pressing play in Android Auto takes the source back and holds it again until
     the next deliberate change.
   - Changing the source doesn't minimise Android Auto (today MODE takes iDrive to its source screen, hiding AA).
-  - To work out at the desk: how the daemon sees a deliberate source change (bus source status, MODE, the menu),
-    the phone's play/pause state, calls (does the source come back after one), prompts while the radio plays. Host
-    tests first, then a car test with calls.
+  - Design (2026-11-06): hold through pauses (`route_policy`), and on a source change release the source, tell the
+    phone it lost audio focus (it pauses) and don't take the source back until the phone asks for focus again (play).
+    MODE decode verified (15/02 fkt 513); the menu's source change has no verified signal yet: needs one browser-mode
+    capture with the bus log on. New setting, off by default upstream. Raise it on an issue before a PR.
 - **G2. Volume floor 25 in browser mode.** The browser source keeps its own level with a minimum of 25 (#81). The
   owner doesn't want the music cut (`NBT_MEDIA_GAIN_DB` rejected): find where the minimum lives (coding, the stock
   audio manager) or a source without one.
@@ -58,6 +59,15 @@ Car test: NEXT-SESSION steps 4 and 5.
   AA to be a real media source for iDrive (the AAiDrive model). Wheel decode: `local/recon/wheel-2026-11-05/`.
 - **G4. Long-press voice** (`NBT_PTT_ASSISTANT=1`) also starts the phone's Bluetooth assistant (iDrive's own long
   press); the two clash. Left off.
-- **G5. Renderer stall**: black screen with frames flowing (runs 20, 22); a renderer restart or a reboot fixes it.
-- **G6. #40 input leak**: not reproduced with single BACK or MEDIA presses; next: bursts of hard keys, OPTION.
-- **G7. `car.sh` ~15.5 s per call** (it knocks every time): skip the knock while SSH answers, batch calls.
+- **G5. Black screen** (runs 20, 22; once more on a drive, 2026-11-06). Two kinds: run 20 = the picture gone with
+  the volume pill showing (the pill window at z=0 in runs 19, 20, 22, z=999 in the working ones), which upstream fixed
+  in v1.9.18 by giving the pill its own surface 1281; run 22 = the renderer going silent after a reboot. base14
+  (v1.9.19 + #91 + browser-hold) is the candidate daily build; the drive's logs decide which kind it was.
+- **G6. #40 input leak**: not reproduced with single BACK or MEDIA presses; next: bursts of hard keys, OPTION. Upstream's
+  new `car/input_activity` (v1.9.18, in main) only reports that the driver touched a control, for the iDrive app's
+  step-aside logic; it doesn't stop input reaching iDrive (Sq00ky on #40: "lots of work is needed"). The app's hold
+  work since rhmiapp-22b (ours) may matter: updating the app is its own step.
+- **G7. `car.sh` ~15.5 s per call** (fixed 2026-11-06): not the knock (none ran) but each SSH connection's setup,
+  probably sshd's DNS lookup of the laptop (`UseDNS`). car.sh now shares one OpenSSH connection for 15 min (~0.05 s
+  per call, `tools/car/test_car.sh`), polls with `grep -c` on the HU instead of copying the log, and pushes in one call;
+  `UseDNS no` is in the sshd template, for the car after `car.sh ssh-diag` confirms.

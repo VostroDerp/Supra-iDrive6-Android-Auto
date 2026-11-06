@@ -32,4 +32,7 @@ ClientAliveInterval 60
 ClientAliveCountMax 3
 # Half a minute to authenticate, then the connection goes.
 LoginGraceTime 30
+# No reverse DNS lookup of the client: the HU has no reachable DNS server, and the lookup's timeouts are the
+# suspected ~15 s on every login (2026-11-06; `car.sh ssh-diag` shows the gap). The allowlist is by address anyway.
+UseDNS no
 PidFile /var/opt/aa/sshd.pid
