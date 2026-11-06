@@ -116,9 +116,7 @@ phone's side (`[Media]` lines, album art files: format, size).
       `test_controls -h` first, then `test_controls -t 120 -r` (as for the wheel, without `-k` if that limits it to
       one FBlock), with marks: skip on the phone, scroll the cluster list 3 down / 3 up, pick "next" on the list. Plus
       `sloginfo` grepped for `EntIC|InstrumentCluster|av_|A4A|Multimedia`.
-- [ ] **If AAIdrive and MyBMW are still on the phone** (optional, last): AAIdrive over Bluetooth while AA runs over
-      USB. Note what iDrive and the cluster show, and `sloginfo` (same grep). A reference trace of a working RHMI
-      media source on this car.
+- [ ] AAIdrive over Bluetooth is now its own step, 5d.
 
 ## 5b. The iDrive app with now playing (one reboot, ~30 min; after 3 and 5; needs a go on the day)
 The car's app goes from rhmiapp-22b to rhmiapp-38-nowplaying with `NbtAad_Media.xml`. That also brings every upstream
@@ -146,8 +144,49 @@ and takes `media next|prev|play`). If iDrive misbehaves, SSH still works (sshd d
        (the app reads the options when the flag comes back). Log: `cluster list model 221 <- 3 rows`. Does the list
        show? Scroll to "Next >" and pick it: app log `cluster setTrack, Parcel ...`, daemon log
        `[Media] 'next' from the iDrive app`, the track changes. Same for "< Previous".
+- [ ] Also in the app log and `sloginfo`: `grep -i -E "ignored|isMyAppActive|A4A"`. Tom found the cluster logs track
+      updates as ignored without an A4A audio session (#51): expect that line once the list is on.
 - [ ] Way back: copy `/var/opt/aa/app-22b/*` back (remount) and reboot. If a and b passed and only the media screens
       misbehave, the plain manifest keeps rhmiapp-38 with the old menu: decide on the day.
+
+## 5c. A4A from inside the car (option B, the owner's pick): what it needs (no reboot, ~25 min; after step 5's pull)
+Option B: our daemon on the head unit logs in to the car's own connected-apps (A4A) server, the way AAIdrive does
+through MyBMW's tunnel, and registers an entertainment source, so the cluster follows it. Two separate locks:
+- **the login:** a BMW-signed app certificate plus a challenge signed with a key only BMW's phone app holds.
+  AAIdrive borrows MyBMW's security service for it. We never take that key out of the app.
+- **the transport check** Tom found: `A4AAudioSessionRegistered` needs a real AOA device (USB), `mIsSPPConnected`
+  (Bluetooth) or `carPlayState = 1` (CarPlay).
+
+Everything here is read-only except the last item.
+- [ ] Processes and listeners: `$C sh 'pidin arg | grep -i -E "a4a|bcl|etch|aoap|connectiv|iap"'`, then
+      `$C sh 'ls -l /usr/bin/netstat /fs/sda0/usr/bin/netstat 2>&1; netstat -an | grep -i listen'` (no `head` on
+      the HU: an earlier recon lost this output that way). Looking for 4004-4008 (AAIdrive's ports: USB, Bluetooth,
+      Ethernet) or whatever the A4A process listens on.
+- [ ] At the laptop, from step 5's pull: strings and code around `A4AAudioSessionRegistered`, `isMyAppActive`,
+      `modePlayerActive`, `mIsSPPConnected`, `carPlayState`, `DConnBMWAuxInDipo`. Which DSI names and versions feed
+      the check (what tells A4A "real AOA device"), and whether that name is free in USB mode, where the stock
+      `devc-serusb-aoap` doesn't run. Also `sas_certificate`, `sas_login`, challenge, and any exemption for local
+      or internal clients.
+- [ ] Are those DSI names taken? Push `$U/dsi_probe` (md5 9e7be8b5) to `/var/opt/aa/dsi_probe` (chmod 755). It opens
+      each name as a client only (it never registers anything).
+      Control first: `$C sh '/var/opt/aa/dsi_probe 5 MOSTSubSystem.DSYSMOSTServer:4.5'` must say `ATTACHED`.
+      Then the names from the strings, e.g. `$C sh '/var/opt/aa/dsi_probe 5 <Role>.<Interface>:<major>.<minor> ...'`,
+      in USB mode with AA running and once with AA stopped.
+- [ ] The server from the laptop, only if a listener was found and the owner says go (the one item that talks to
+      A4A): `$C forward 14004 <port>`, then from the laptop connect to 127.0.0.1:14004 and see whether it
+      answers. A login attempt needs an Etch client on the laptop (IDriveConnectKit, the Kotlin library AAIdrive
+      uses). `$C unforward 14004 <port>` afterwards.
+
+## 5d. Reference: a real A4A session (option A, ~20 min; MyBMW + AAIdrive on the phone)
+AAIdrive over Bluetooth (MyBMW holds the link) while AA runs over USB with base14. It answers whether a real A4A
+session and AA coexist on this car, what the cluster shows, and what our browser source does. It is also the
+reference for 5c: which port, which calls, in what order.
+- [ ] Before: `$C sh 'netstat -an | grep -i listen'` and `pidin arg` (same greps as 5c). Connect MyBMW, start
+      AAIdrive, play music in AA. Then again: what opened.
+- [ ] Note and photograph: iDrive's apps list, the cluster, iDrive's now playing, the audio source. Skip from the
+      cluster list (AAIdrive's "Next >"): does the AA track change?
+- [ ] `sloginfo` grepped for `EntIC|InstrumentCluster|av_|A4A|Multimedia|isMyAppActive`, the daemon log
+      (`[BrowserAudio]`, `[Media]`), and the phone's logcat if adb sees it (`adb logcat -d | grep -i -E "idrive|bmw|etch"`).
 
 ## 6. Wireless over Wi-Fi Direct (no reboot, ~15-20 min)
 The car runs its Wi-Fi Direct group at boot even without CarPlay, since Wi-Fi and screen-mirroring coding was switched
