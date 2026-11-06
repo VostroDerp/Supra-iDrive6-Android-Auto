@@ -31,6 +31,9 @@ typedef void (*MicRequestCallback)(bool open, void* user_data);
 // Navigation status channel (ch 10, messages 0x8000 and up): the message id and its protobuf body (after the 2-byte
 // message id). Session thread: copy what you need and return, never block.
 typedef void (*NavStatusCallback)(uint16_t msg_id, const uint8_t* body, size_t len, void* user_data);
+// The phone asked for audio focus (AudioFocusRequest 0x12 on channel 0): 1 GAIN, 2 GAIN_TRANSIENT, 3 GAIN_NAVI,
+// 4 RELEASE. Session thread, after the response went out.
+typedef void (*AudioFocusCallback)(uint32_t request, void* user_data);
 
 class AASession {
 public:
@@ -47,6 +50,7 @@ public:
     void setVideoFocusCallback(VideoFocusCallback cb, void* user_data = NULL);
     void setMicRequestCallback(MicRequestCallback cb, void* user_data = NULL);
     void setNavStatusCallback(NavStatusCallback cb, void* user_data = NULL);
+    void setAudioFocusCallback(AudioFocusCallback cb, void* user_data = NULL);
     bool isActive() const { return isRunning(); }   // true from start() until the session ended or stop()
     // Touch forwarding (default on, NBT_TOUCH_FWD=0 disables): thread-safe, called from the touch thread.
     // Events are queued and sent by the session thread.
@@ -62,6 +66,9 @@ public:
     // sent to the phone as a NIGHT_MODE sensor event once it has started that sensor. NBT_NIGHT_MODE=0/1 overrides.
     // Thread-safe.
     void postNightMode(bool night);
+    // The car took the audio (the driver picked another source, browser mode's NBT_BROWSER_HOLD): an unrequested
+    // AudioFocusNotification LOSS, so the phone pauses its media. Thread-safe; needs the wake pipe.
+    void postAudioFocusLoss();
     // Car microphone PCM (16 kHz mono S16LE) for the phone. Thread-safe (capture thread); queued and sent on
     // ch 14 by the session thread while the phone has the mic open, dropped otherwise.
     void postMicData(const uint8_t* pcm, size_t len);
@@ -112,6 +119,9 @@ private:
     bool sendKeyEvent(const KeyOut& k);            // session thread only
     std::vector<KeyOut> key_queue_;                // guarded by touch_mutex_
     int pending_focus_;                            // guarded by touch_mutex_: 0 none, 1 projected, 2 native
+    bool pending_audio_loss_;                      // guarded by touch_mutex_: send AudioFocusNotification LOSS
+    AudioFocusCallback audio_focus_cb_;
+    void* audio_focus_user_data_;
     int night_state_;                              // guarded by touch_mutex_: -1 unknown, 0 day, 1 night (car)
     bool night_started_;                           // guarded by touch_mutex_: phone started sensor 10 this session
     bool pending_night_;                           // guarded by touch_mutex_: send a NIGHT_MODE event on next drain
