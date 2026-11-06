@@ -1,6 +1,7 @@
 # Next car session
 
-**Goal: a daily build that doesn't go black, and the pause fix tested in the car.** The base moves to v1.9.19, which
+**Goal: a daily build that doesn't go black, the pause fix tested in the car, and everything the now-playing PR
+(#51, option A) needs from the car.** The base moves to v1.9.19, which
 moves the volume pill off the Android Auto picture's surface (the black screen with the pill showing, run 20, and
 again on a drive on 2026-11-06). The pause fix (#110, branch `browser-hold`) gets its first car test, with the data
 #110 still needs: what the bus shows when a source is picked in the iDrive menu.
@@ -16,7 +17,7 @@ doesn't depend on it. Note the clock at the start of each step. Results go into 
 |---|---|---|---|
 | `nbt-aad-base` (there now) | v1.9.09-most-base13-pr91 | upstream main e279e55 + Tom's #91 | daily build since run 25; black screen seen once on a drive |
 | `nbt-aad-base13-pr91` (there) | the same | the way back | |
-| `nbt-aad-base14` (push `$U/nbt-aad-base14`) | v1.9.19-safety-base14 | upstream main a9fac36 + #91 (0b38f62) + `browser-hold` (a55c82f); the hold is off unless `NBT_BROWSER_HOLD=1` | host tests 57/57, QNX build, not car-tested |
+| `nbt-aad-base14` (push `$U/nbt-aad-base14`, md5 bf0b789d) | v1.9.19-safety-base14 | upstream main a9fac36 + #91 (0b38f62) + `browser-hold` (a55c82f, off unless `NBT_BROWSER_HOLD=1`) + `aa-media` (f2d93df: now playing published in `/dev/shmem/nbt-aad-media`, `[Media]` log lines; `NBT_MEDIA_INFO=0` = off) | host tests pass, QNX build, not car-tested |
 
 The iDrive app stays rhmiapp-22b this session (it works with v1.9.19; updating it is its own step, "Later").
 
@@ -54,12 +55,15 @@ The shared connection from "Getting in" stays open the whole step: it is the way
 
 ## 3. base14, hold off (no reboot, ~15 min)
 - [ ] `$C push $U/nbt-aad-base14 /var/opt/aa/nbt-aad-base14`.
-- [ ] `$C run 26 nbt-aad-base14 NBT_VEHICLE=bmw NBT_AUDIO_MODE=browser NBT_MOST_LOG=1`. Check:
+- [ ] `$C run 26 nbt-aad-base14 NBT_VEHICLE=bmw NBT_AUDIO_MODE=browser NBT_MOST_LOG=1 NBT_MEDIA_DUMP=3`. Check:
       - picture; `[VolOsd]` lines name surface 1281 (first time on an ID5: the pill was moved for the Supra);
       - volume up/down on the wheel and the knob: the pill shows, the picture stays;
       - reverse with the parking sensors, then back to drive: Android Auto steps aside and comes back;
       - a quick controller round (turn, push, BACK, MENU);
-      - the iDrive app's `hold:` lines in `sloginfo` behave as with base13 (22b with v1.9.19).
+      - the iDrive app's `hold:` lines in `sloginfo` behave as with base13 (22b with v1.9.19);
+      - with music playing and a couple of skips on the phone: `[Media] track: ...` and `[Media] album art N: ...`
+        lines, `$C sh 'cat /dev/shmem/nbt-aad-media'` shows the song, and `$C pull /var/opt/aa/aa-art-1.png` (or `.jpg`,
+        the log line names it) into `id5/local/recon/run-26/` (step 5 uses these).
       Prediction: all as base13, the pill above the picture. A black screen: note the time, `$C collect` anyway, and
       restart the renderer (`pidin ar | grep mm-renderer`, kill it, the start-up script's step 3 line).
 
@@ -86,16 +90,33 @@ part: `$C sh "echo '==== MARK 4x <what> ====' >>/var/opt/aa/nbt-usb27.log"`, and
       needs the `/fs/sda0` remount (the install lines at the top of `tools/hu-install/nbt-aad-usb.sh` show how).
 - [ ] Reboot with the phone plugged in. Check: picture without a replug (#91), knockd up.
 
-## If time: G3 data (read-only, ~20 min; for the "AA as a real media source" decision)
-- [ ] Pull the iDrive and media-app binaries: `$C sh 'ls -l /opt/hmi/bin/zipped/HmiMain3D /opt/mm/bin/NBTMediaMainApp'`,
-      then `$C pull` each into `id5/local/pulled/`. At the desk: does the RHMI parser know `instrumentCluster`,
-      `audioHmiState`, `EntICPlaylist`, and can a native plugin reach the AV (entertainment source) API.
-- [ ] Bluetooth audio (base14, `NBT_AUDIO_MODE=bt`) with music playing, an unfiltered capture: `test_controls -h`
-      first, then `test_controls -t 120 -r` (as for the wheel, without `-k` if that limits it to one FBlock), with
-      marks: skip on the phone, scroll the cluster list 3 down / 3 up, pick "next" on the list. Plus `sloginfo`
-      grepped for `EntIC|InstrumentCluster|av_|A4A|Multimedia`.
+## 5. Now playing (#51, option A): what the iDrive side needs (~30 min, after 3; no reboot)
+Goal: everything the iDrive app work needs, so the PR can be written at the desk. Step 3's run already gave the
+phone's side (`[Media]` lines, album art files: format, size).
+- [ ] **Media keys reach the phone** (one run, keys remapped for the test only):
+      `$C run 28 nbt-aad-base14 NBT_VEHICLE=bmw NBT_AUDIO_MODE=browser NBT_KEY_OPTIONS=87 NBT_KEY_COM=88`.
+      Music playing: OPTION = next track, COM = previous track (MARK before each, 3 presses ~3 s apart). Prediction:
+      the track changes each time; `[AASession] key -> phone: key=87 down/up (sent)`.
+- [ ] **Where iDrive's screens live** (read-only):
+      `$C sh 'ls -l /opt/hmi/bin /opt/hmi/bin/zipped /opt/mm/bin/NBTMediaMainApp; ls /opt/hmi/ID5/data/ro/Plugins; ls /opt/hmi/lib /opt/mm/lib 2>/dev/null | grep -i -E "a4a|rhmi|hmi|av"'`,
+      then `$C pull` into `id5/local/pulled/hmi/`: HmiMain3D, NBTMediaMainApp and the `*a4a*` libraries. At the desk:
+      the XML parser's tags (`instrumentCluster`, `audioHmiState`, `multimediaInfoEvent`, `EntICPlaylist`) and how an
+      app becomes the entertainment source.
+- [ ] **Any stock screen that already uses those tags**:
+      `$C sh 'for f in $(find /opt/hmi /var/opt/hmi -name "*.xml" 2>/dev/null); do grep -l -i -E "instrumentCluster|audioHmiState|EntICPlaylist" "$f"; done'`;
+      pull what it lists.
+- [ ] **The car's audio sources** (read-only): `$C sh '/fs/sda0/opt/mm/bin/audioconn 2>&1 | tail -n 30'` (its
+      options), then its list of all connections and sources, once with Bluetooth audio playing and once in browser
+      mode. Looking for the source a connected app (A4A) plays through, next to `0xb8` and `0xc7`.
+- [ ] **The cluster list in Bluetooth mode** (base14, `NBT_AUDIO_MODE=bt`, music playing), unfiltered:
+      `test_controls -h` first, then `test_controls -t 120 -r` (as for the wheel, without `-k` if that limits it to
+      one FBlock), with marks: skip on the phone, scroll the cluster list 3 down / 3 up, pick "next" on the list. Plus
+      `sloginfo` grepped for `EntIC|InstrumentCluster|av_|A4A|Multimedia`.
+- [ ] **If AAIdrive and MyBMW are still on the phone** (optional, last): AAIdrive over Bluetooth while AA runs over
+      USB. Note what iDrive and the cluster show, and `sloginfo` (same grep). A reference trace of a working RHMI
+      media source on this car.
 
-## 5. Wireless over Wi-Fi Direct (no reboot, ~15-20 min)
+## 6. Wireless over Wi-Fi Direct (no reboot, ~15-20 min)
 The car runs its Wi-Fi Direct group at boot even without CarPlay, since Wi-Fi and screen-mirroring coding was switched
 on with BimmerCode (findings.md, Wi-Fi; which setting matters is not tested yet). Upstream's `NBT_ALT_WIFI=DIRECT` offers that group to the phone; it was tested
 on a car with CarPlay, so this is the first car without it.
@@ -111,7 +132,7 @@ on a car with CarPlay, so this is the first car without it.
 - [ ] Then both on (`NBT_USB=1`, default `NBT_ALT_WIFI`): plugging in during a wireless session leaves it alone,
       and wireless never takes over a USB session. Making the start-up script run both is a separate change.
 
-## 6. knockd v2 (no reboot for the side-by-side test, ~15 min)
+## 7. knockd v2 (no reboot for the side-by-side test, ~15 min)
 v2 answers only on the cable and the car's Wi-Fi, opens SSH for a limited window, and fixes the review findings
 (IMPROVEMENT-PLAN A2, A3, A8, C). Procedure: `tools/knock/README.md`, "Deploying v2 over v1".
 - [ ] First, read-only: `$C sh 'pfctl -a filter_OBD -s rules; pfctl -s Interfaces'` (how the cable gets past the
@@ -119,7 +140,7 @@ v2 answers only on the cable and the car's Wi-Fi, opens SSH for a limited window
 - [ ] v2 side by side on a test port with its test configs, knock and log in. Then swap it in, with v1 kept as
       `knockd.v1`, and check a cold boot through the start-up script.
 
-## 7. NbtService (two reboots, ~20 min plus the reboots; after step 6)
+## 8. NbtService (two reboots, ~20 min plus the reboots; after step 7)
 An iDrive plugin that starts knockd at boot without the Android Auto app, and holds an "SSH for 15 minutes" switch
 (IMPROVEMENT-PLAN A1, A5). Install: `tools/nbtservice/README.md`, to `/var/opt/hmi/data/ID5/Plugins/NbtService`.
 - [ ] Read-only first: `$C sh 'ls -R /opt/hmi /var/opt/hmi 2>/dev/null | grep -i manifest'` (where stock
