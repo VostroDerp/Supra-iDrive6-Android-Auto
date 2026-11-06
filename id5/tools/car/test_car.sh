@@ -96,6 +96,25 @@ out=$(CAR_SSH=openssh "$CAR" sh 'echo x' 2>&1); rc=$?
 check "CAR_SSH=openssh fails loudly instead" [ $rc != 0 ]
 mv "$T/kh.saved" "$T/local/car_known_hosts"
 
+# 5b. forward: a laptop port reaches a server on the "HU" side through the shared connection, unforward stops it.
+RP=$((PORT + 1)); LP=$((PORT + 2))
+"$CAR" close >/dev/null; "$CAR" sh true            # the fallback test above left plink chosen
+python3 -c "
+import socket
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('127.0.0.1', $RP)); s.listen(4)
+while True:
+    c, _ = s.accept(); c.sendall(b'pong\\n'); c.close()
+" & SRV=$!
+for _ in $(seq 1 30); do timeout 1 bash -c ": </dev/tcp/127.0.0.1/$RP" 2>/dev/null && break; sleep 0.1; done
+"$CAR" forward $LP $RP >/dev/null
+out=$(timeout 3 python3 -c "import socket; print(socket.create_connection(('127.0.0.1', $LP)).recv(16).decode().strip())" 2>/dev/null)
+check "forward reaches the HU-side port" [ "$out" = pong ]
+"$CAR" unforward $LP $RP >/dev/null
+check "unforward stops it" bash -c "! timeout 2 bash -c ': </dev/tcp/127.0.0.1/$LP' 2>/dev/null"
+out=$("$CAR" forward 1 2 3 2>&1); rc=$?
+check "forward with wrong arguments fails" [ $rc != 0 ]
+kill $SRV 2>/dev/null
+
 # 6. close (also clears the failure marker, so the next call opens a shared connection again).
 "$CAR" close >/dev/null; "$CAR" sh true
 check "after close OpenSSH is tried again" bash -c "'$CAR' status | grep -q 'OpenSSH connection up'"

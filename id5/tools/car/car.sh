@@ -19,6 +19,8 @@
 #   car.sh login                    interactive shell
 #   car.sh status                   is the HU reachable, is knockd / sshd answering, is a shared connection up
 #   car.sh close                    drop the shared OpenSSH connection
+#   car.sh forward <lport> <rport>  laptop 127.0.0.1:<lport> -> the HU's 127.0.0.1:<rport>, over the shared
+#                                   connection (OpenSSH only); `car.sh unforward <lport> <rport>` stops it
 #   car.sh ssh-diag                 time one fresh connection step by step (where the ~15 s goes)
 #   car.sh collect <N>              after test run N: id5/local/recon/run-N/ gets the daemon logs (nbt-usbN*.log),
 #                                   pidin / fds / dev nodes / sloginfo, binary sizes, phone logcat (if adb
@@ -343,6 +345,16 @@ case "$cmd" in
         port_open "$KNOCK_PORT" && echo "knockd    :$KNOCK_PORT open" || echo "knockd    :$KNOCK_PORT closed"
         port_open "$SSH_PORT" && echo "sshd      :$SSH_PORT open" || echo "sshd      :$SSH_PORT closed (knock first)"
         master_up && echo "shared    OpenSSH connection up ($CTL)" || echo "shared    no OpenSSH connection (the next call opens one)"
+        ;;
+    forward|unforward)
+        [ $# -eq 2 ] || die "usage: car.sh $cmd <laptop port> <HU port>"
+        knock || exit 1
+        pick_transport
+        [ "${TRANSPORT[0]}" = ssh ] && master_up || die "forward needs the shared OpenSSH connection (plink has none)"
+        op=forward; [ "$cmd" = unforward ] && op=cancel
+        ssh -o ControlPath="$CTL" -O "$op" -L "127.0.0.1:$1:127.0.0.1:$2" "$USER_@$HU_IP" \
+            || die "ssh -O $op failed (port $1 in use on the laptop?)"
+        [ "$op" = forward ] && echo "forwarding 127.0.0.1:$1 -> HU 127.0.0.1:$2" || echo "stopped 127.0.0.1:$1"
         ;;
     close)
         master_up && ssh -o ControlPath="$CTL" -O exit "$USER_@$HU_IP" 2>/dev/null; rm -f "$CTL.failed"
