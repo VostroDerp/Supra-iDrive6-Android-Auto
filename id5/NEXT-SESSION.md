@@ -164,10 +164,22 @@ Everything here is read-only except the last item.
       the HU: an earlier recon lost this output that way). Looking for 4004-4008 (AAIdrive's ports: USB, Bluetooth,
       Ethernet) or whatever the A4A process listens on.
 - [ ] At the laptop, from step 5's pull: strings and code around `A4AAudioSessionRegistered`, `isMyAppActive`,
-      `modePlayerActive`, `mIsSPPConnected`, `carPlayState`, `DConnBMWAuxInDipo`. Which DSI names and versions feed
-      the check (what tells A4A "real AOA device"), and whether that name is free in USB mode, where the stock
-      `devc-serusb-aoap` doesn't run. Also `sas_certificate`, `sas_login`, challenge, and any exemption for local
-      or internal clients.
+      `modePlayerActive`, `mIsSPPConnected`, `carPlayState`, `DConnBMWAuxInDipo`. All read-only. Three questions
+      decide which path is open, so pull out the evidence for each:
+      1. **Login.** `sas_certificate`, `sas_login` and the challenge: does the component that verifies the login
+         skip or soften it for a client that is local or internal (loopback, a local DSI/socket, a trusted uid),
+         rather than one coming in over the phone tunnel? Also whether a developer / `ENTWICKLER`-style coding
+         value loosens which certificates are accepted (AAIdrive's prober relies on exactly that on some cars).
+      2. **Transport signal.** Which DSI name and version each gate reads, and whether it is a plain stored value
+         (like `carPlayState`, which Tom notes is a single DSI value) that a client can assert, or tied to a
+         driver's live state. For USB: what tells A4A "real AOA device", and is that name free in USB mode, where
+         the stock `devc-serusb-aoap` does not run. Note any service `Connectivity` already registers (Tom: the
+         broker refuses a duplicate name) and any dependence on CarPlay being coded.
+      3. **Local A4A port.** Does the A4A server bind a local socket, or only accept connections from the tunnel
+         endpoint (see the listeners item above)?
+- [ ] Decision tree, and any head-unit-side changes that would not go upstream (the owner wants those explored for
+      his own car): `id5/local/design/G3-optionB-private.md` (local only, gitignored). Keep methods that are not
+      submittable there, not in this file.
 - [ ] Are those DSI names taken? Push `$U/dsi_probe` (md5 9e7be8b5) to `/var/opt/aa/dsi_probe` (chmod 755). It opens
       each name as a client only (it never registers anything).
       Control first: `$C sh '/var/opt/aa/dsi_probe 5 MOSTSubSystem.DSYSMOSTServer:4.5'` must say `ATTACHED`.
