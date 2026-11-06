@@ -49,6 +49,7 @@ SRC_test_lm_geometry       :=
 SRC_test_media_ack         :=
 SRC_test_media_msgs        :=
 SRC_test_media_info        := src/media_publish.cpp
+SRC_test_now_playing       :=
 SRC_test_mmr_launch        :=
 SRC_test_mmr_pps           :=
 SRC_test_most_client       := src/most/client.cpp tests/fake_dsi_client.cpp

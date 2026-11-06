@@ -58,12 +58,13 @@
 #include "boot_guard.hpp"
 #include "overlay_watch.hpp"
 #include "entry_key.hpp"
+#include "now_playing.hpp"
 #ifdef __QNX__
 #include <sys/slog.h>
 #include <sys/slogcodes.h>
 #endif
 
-#define NBT_AAD_APP_VERSION "rhmiapp-37-safety (" __DATE__ " " __TIME__ ")"
+#define NBT_AAD_APP_VERSION "rhmiapp-38-nowplaying (" __DATE__ " " __TIME__ ")"
 
 extern char** environ;
 
@@ -78,6 +79,10 @@ public:
     explicit Parcel(bool value);             // _ZN3bmw6ParcelC1Eb (libCoreFramework), 0x14 bytes, polymorphic
     ~Parcel();                               // _ZN3bmw6ParcelD1Ev
     void readBool(bool& value) const;        // _ZNK3bmw6Parcel8readBoolERb (SecurityMenu_Base::onFocus)
+    // The bytes as written (big-endian numbers), without moving the read position: libCoreFramework returns the
+    // Vector<unsigned char> data pointer (+0) and size (+4). Used to log and decode the cluster's setTrack action.
+    const unsigned char* getRawData() const; // _ZNK3bmw6Parcel10getRawDataEv
+    unsigned size() const;                   // _ZNK3bmw6Parcel4sizeEv
 private:
     unsigned char m_storage[32];             // >= sizeof(bmw::Parcel) (0x14)
 };
@@ -138,6 +143,41 @@ public:
 };
 template <> inline int Variant::ObjectContainer<TextID>::type() const { return 0x28; }
 
+// A list cell whose type code is chosen at run time (now playing, rhmiapp/now_playing.hpp): the value sits right after
+// the vtable pointer, as in ObjectContainer<TextID>. Text is BasicString<char>, type 0x22 (libAppFramework's
+// Variant::is<BasicString<char>> compares type() with 0x22); the int and bool codes are not known yet.
+template <typename T> class TypedCell : public Variant::IObjectContainer {
+public:
+    TypedCell(const T& v, int type) : m_value(v), m_type(type) {}
+    virtual int type() const { return m_type; }
+    virtual IObjectContainer* clone() const { return new TypedCell<T>(m_value, m_type); }
+private:
+    T m_value;
+    int m_type;
+};
+
+// Album art for an raImageModel (libCoreFramework): Image = { BasicString<char> path (+0), BufferStream bytes (+4,
+// 24 bytes, polymorphic), bool loaded (+28) }. Image(data, size) copies the bytes into the stream but leaves `loaded`
+// alone (Image(BufferStream&) sets it); Image::load() reads the path only while it is false. No ~Image is exported: it
+// is inline, members in reverse order.
+class BufferStream {
+public:
+    ~BufferStream();                         // _ZN3bmw12BufferStreamD1Ev
+private:
+    unsigned char m_storage[24];
+};
+class Image {
+public:
+    Image(const unsigned char* data, unsigned size);   // _ZN3bmw5ImageC1EPKhj
+    ~Image() {}
+    void markLoaded() { m_loaded = true; }
+private:
+    BasicString<char> m_path;
+    BufferStream m_stream;
+    bool m_loaded;
+    unsigned char m_pad[3];
+};
+
 template <typename K, typename V> class Map {
 public:
     Map() : m_table(0), m_hashSize(17), m_count(0), m_free(0), m_blocks(0), m_blockSize(10) {}
@@ -185,6 +225,10 @@ public:
     void updateModel(unsigned modelId, const ImageID& image); // _ZN3bmw9PluginApp11updateModelEjRKNS_7ImageIDE
     void updateModel(unsigned modelId, bool value);           // _ZN3bmw9PluginApp11updateModelEjb (raBoolModel: checkbox)
     void updateModel(unsigned modelId, const DataTableBase& table); // _ZN3bmw9PluginApp11updateModelEjRKNS_13DataTableBaseE
+    // Now playing: free text (raDataModel), album art (raImageModel), a number (raGaugeModel / raIntModel).
+    void updateModel(unsigned modelId, const BasicString<unsigned short>& text); // _ZN3bmw9PluginApp11updateModelEjRKNS_11BasicStringItEE
+    void updateModel(unsigned modelId, const Image& image);   // _ZN3bmw9PluginApp11updateModelEjRKNS_5ImageE
+    void updateModel(unsigned modelId, int value);            // _ZN3bmw9PluginApp11updateModelEji
     // Component property: 1 enabled, 2 selectable, 3 visible, 8 LABEL_WAITINGANIMATION (iDrive's busy ring while any
     // component of the state has it set; HmiMain3D component -> state -> activity waitingAnimation).
     void setProperty(unsigned componentId, unsigned propertyId, const Parcel& value);   // _ZN3bmw9PluginApp11setPropertyEjjRKNS_6ParcelE
@@ -1778,6 +1822,256 @@ void serviceAutostart() {
     if (!g_autostartMono) g_autostartMono = 1;
 }
 
+// ---- now playing (upstream #51): NbtAad_Media.xml + rhmiapp/now_playing.hpp ----------------------------------------
+// Off unless /var/opt/aa/now-playing (or /opt/aa/now-playing) exists; the models below exist only in NbtAad_Media.xml.
+// From the status poll: one small file read a second, models updated only when something changed. Not car-verified:
+// whether iDrive accepts these elements from a native app, and whether the cluster shows our list, is what the first
+// car run answers.
+const unsigned kActIcAction    = 201;        // <instrumentCluster action>
+const unsigned kActIcSetTrack  = 202;        // <instrumentCluster setTrackAction>: a list row was selected
+const unsigned kActNpFirst     = 203;        // <audioHmiState> artist / cover / progress / playList / album actions
+const unsigned kActNpLast      = 207;
+const unsigned kNpIcList       = 221;        // raListModel EntICPlaylist (7 columns)
+const unsigned kNpIcUseCase    = 223;        // raDataModel: "EntICPlaylist"
+const unsigned kNpIcAdditional = 226;        // cluster second line: artist
+const unsigned kNpIcText       = 227;        // cluster title
+const unsigned kNpAltText      = 230;        // audio state: the phone's app
+const unsigned kNpTrack        = 231;
+const unsigned kNpPlaylistText = 233;
+const unsigned kNpArtistText   = 235;
+const unsigned kNpAlbumText    = 237;
+const unsigned kNpCover        = 238;        // raImageModel
+const unsigned kNpProgress     = 239;        // raGaugeModel 0..100
+const unsigned kNpCurrentTime  = 241;        // position
+const unsigned kNpElapsingTime = 242;        // time left, "-m:ss"
+const unsigned kNpInfo1        = 247;        // multimediaInfoEvent textModel1: artist
+const unsigned kNpInfo2        = 248;        // multimediaInfoEvent textModel2: title
+const unsigned kNpStatusText   = 249;        // statusbarEvent text: the phone's app
+const unsigned kEvNpInfo       = 260;        // <multimediaInfoEvent>
+const unsigned kEvNpStatus     = 261;        // <statusbarEvent>
+const unsigned kIcColumns      = 7;
+
+// Shown instead of a cover: a 1x1 transparent PNG.
+const unsigned char kBlankPng[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49,
+    0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x60, 0x60, 0x60, 0x60, 0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x7a, 0xa8, 0x57,
+    0x50, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82 };
+
+typedef char kImageLayoutCheck[sizeof(void*) != 4 || sizeof(bmw::Image) == 32 ? 1 : -1];   // the car (32-bit) layout
+
+bool g_npEnabled = false;
+nbt::nowplaying::Options g_npOpt;
+nbt::nowplaying::Track g_npShown;
+bool g_npHaveShown = false;
+bool g_npListNoted = false;
+unsigned g_npArtTried = 0;                   // art seq whose file did not match its record (logged once)
+
+bool nowPlayingFlag() { return fileExists(nbt::nowplaying::kFlag) || fileExists(nbt::nowplaying::kFlagManual); }
+
+void npReadOptions() {
+    char buf[512] = "";
+    const char* path = fileExists(nbt::nowplaying::kFlag) ? nbt::nowplaying::kFlag : nbt::nowplaying::kFlagManual;
+    int fd = open(path, O_RDONLY);
+    if (fd >= 0) {
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        buf[n > 0 ? n : 0] = 0;
+        close(fd);
+    }
+    g_npOpt = nbt::nowplaying::parseOptions(buf);
+    alog("now playing: on (%s); list cell types text 0x%x int 0x%x bool 0x%x%s", path, g_npOpt.stringType,
+         g_npOpt.intType, g_npOpt.boolType, g_npOpt.listTypesKnown() ? "" : " (cluster list off until int-type and bool-type are set)");
+}
+
+void npText(bmw::PluginApp* app, unsigned model, const std::string& text) {
+    std::vector<unsigned short> u = nbt::nowplaying::utf16(text);
+    bmw::BasicString<unsigned short> s(&u[0]);
+    app->updateModel(model, s);
+}
+
+void npCell(bmw::Map<unsigned, bmw::Variant>& cells, unsigned key, bmw::Variant::IObjectContainer* c) {
+    bmw::Variant& v = cells[key];
+    delete v.m_obj;                                      // fresh cell: NULL; ~Map frees whatever is left
+    v.m_obj = c;
+}
+
+void npClusterList(bmw::PluginApp* app, const nbt::nowplaying::Track& t) {
+    if (!g_npOpt.listTypesKnown()) {
+        if (!g_npListNoted) alog("now playing: cluster list not sent (int-type / bool-type unknown)");
+        g_npListNoted = true;
+        return;
+    }
+    const std::vector<nbt::nowplaying::ClusterRow> rows = nbt::nowplaying::clusterRows(t);
+    bmw::Map<unsigned, bmw::Variant> cells;
+    bmw::DataTableBase table(&cells, kIcColumns);
+    const int ti = g_npOpt.intType, tb = g_npOpt.boolType, ts = g_npOpt.stringType;
+    for (size_t r = 0; r < rows.size(); ++r) {
+        const unsigned k = (unsigned)r * kIcColumns;
+        npCell(cells, k + 0, new bmw::TypedCell<int>(rows[r].index, ti));
+        npCell(cells, k + 1, new bmw::TypedCell<bmw::BasicString<char> >(bmw::BasicString<char>(rows[r].title.c_str()), ts));
+        npCell(cells, k + 2, new bmw::TypedCell<bmw::BasicString<char> >(bmw::BasicString<char>(rows[r].artist.c_str()), ts));
+        npCell(cells, k + 3, new bmw::TypedCell<bmw::BasicString<char> >(bmw::BasicString<char>(rows[r].album.c_str()), ts));
+        npCell(cells, k + 4, new bmw::TypedCell<int>(-1, ti));
+        npCell(cells, k + 5, new bmw::TypedCell<bool>(rows[r].checked, tb));
+        npCell(cells, k + 6, new bmw::TypedCell<bool>(true, tb));
+    }
+    app->updateModel(kNpIcList, table);
+    if (!g_npListNoted) alog("now playing: cluster list model %u <- %u rows", kNpIcList, (unsigned)rows.size());
+    g_npListNoted = true;
+}
+
+void npImage(bmw::PluginApp* app, const unsigned char* p, unsigned n) {
+    void* mem = ::operator new(sizeof(bmw::Image));
+    memset(mem, 0, sizeof(bmw::Image));
+    bmw::Image* img = new (mem) bmw::Image(p, n);
+    img->markLoaded();                                   // as Image(BufferStream&) does: never load() from a path
+    app->updateModel(kNpCover, *img);
+    img->~Image();
+    ::operator delete(mem);
+}
+
+// true = the cover shows this record's art (or the blank one); false = try again on the next poll.
+bool npArt(bmw::PluginApp* app, const nbt::nowplaying::Track& t) {
+    if (!nbt::nowplaying::hasSong(t) || !t.artBytes || t.artPath == "-") {
+        npImage(app, kBlankPng, sizeof(kBlankPng));
+        return true;
+    }
+    if (t.artBytes > nbt::nowplaying::kArtMax || (t.artType != "png" && t.artType != "jpeg")) {
+        if (g_npArtTried != t.artSeq) alog("now playing: album art %u not shown (%s, %u bytes)", t.artSeq, t.artType.c_str(), t.artBytes);
+        g_npArtTried = t.artSeq;
+        npImage(app, kBlankPng, sizeof(kBlankPng));
+        return true;
+    }
+    std::vector<unsigned char> buf(t.artBytes + 1);
+    size_t got = 0;
+    int fd = open(t.artPath.c_str(), O_RDONLY);
+    if (fd >= 0) {
+        ssize_t n;
+        while (got < buf.size() && (n = read(fd, &buf[got], buf.size() - got)) > 0) got += (size_t)n;
+        close(fd);
+    }
+    if (!nbt::nowplaying::artMatches(got ? &buf[0] : NULL, got, t)) {
+        if (g_npArtTried != t.artSeq) alog("now playing: album art %u: %s has %u bytes, the record says %u; retrying",
+                                            t.artSeq, t.artPath.c_str(), (unsigned)got, t.artBytes);
+        g_npArtTried = t.artSeq;
+        return false;
+    }
+    npImage(app, &buf[0], (unsigned)got);
+    alog("now playing: album art %u -> cover (%s %ux%u, %u bytes)", t.artSeq, t.artType.c_str(), t.artW, t.artH, t.artBytes);
+    return true;
+}
+
+void npProgress(bmw::PluginApp* app, const nbt::nowplaying::Track& t) {
+    const bool on = nbt::nowplaying::hasSong(t);
+    app->updateModel(kNpProgress, on ? nbt::nowplaying::progressPercent(t) : 0);
+    npText(app, kNpCurrentTime, on ? nbt::nowplaying::formatTime(t.position) : std::string());
+    const unsigned left = t.duration > t.position ? t.duration - t.position : 0;
+    npText(app, kNpElapsingTime, on && t.duration ? "-" + nbt::nowplaying::formatTime(left) : std::string());
+}
+
+void npTexts(bmw::PluginApp* app, const nbt::nowplaying::Track& t, bool newText) {
+    const bool on = nbt::nowplaying::hasSong(t);
+    const std::string none;
+    npText(app, kNpTrack, on ? t.song : none);
+    npText(app, kNpArtistText, on ? t.artist : none);
+    npText(app, kNpAlbumText, on ? t.album : none);
+    npText(app, kNpPlaylistText, on ? t.playlist : none);
+    npText(app, kNpAltText, on ? t.app : none);
+    npText(app, kNpIcText, on ? t.song : none);
+    npText(app, kNpIcAdditional, on ? t.artist : none);
+    npClusterList(app, t);
+    if (on && newText) {                                  // iDrive's own now playing line and status bar
+        npText(app, kNpInfo1, t.artist);
+        npText(app, kNpInfo2, t.song);
+        app->triggerEvent(kEvNpInfo);
+        npText(app, kNpStatusText, t.app);
+        app->triggerEvent(kEvNpStatus);
+    }
+    if (on) alog("now playing: \"%s\" - \"%s\" (%s, %s)", t.song.c_str(), t.artist.c_str(), t.app.c_str(), t.state.c_str());
+    else alog("now playing: cleared (%s)", t.state.c_str());
+}
+
+// daemonUp = false: a killed daemon leaves its last record behind; show nothing.
+void serviceNowPlaying(bmw::PluginApp* app, bool daemonUp) {
+    const bool on = nowPlayingFlag();
+    if (on != g_npEnabled) {
+        g_npEnabled = on;
+        if (on) {
+            npReadOptions();
+            npText(app, kNpIcUseCase, nbt::nowplaying::kUseCase);
+        } else {
+            alog("now playing: off");
+            if (g_npHaveShown) {                          // leave nothing stale on the screens
+                nbt::nowplaying::Track none;
+                npTexts(app, none, false);
+                npProgress(app, none);
+                npImage(app, kBlankPng, sizeof(kBlankPng));
+            }
+        }
+        g_npHaveShown = false;
+        g_npListNoted = false;
+    }
+    if (!on) return;
+    nbt::nowplaying::Track t;                            // state "none"
+    if (daemonUp) {
+        char buf[nbt::nowplaying::kRecordMax];
+        int fd = open(nbt::nowplaying::kRecordFile, O_RDONLY);
+        if (fd < 0) return;                              // not written yet, or NBT_MEDIA_INFO=0
+        ssize_t n = read(fd, buf, sizeof(buf));
+        close(fd);
+        if (n <= 0 || !nbt::nowplaying::parseRecord(buf, (size_t)n, t)) return;   // mid-write: next poll
+    }
+    const unsigned c = nbt::nowplaying::changes(g_npShown, g_npHaveShown, t);
+    const bool songChanged = !g_npHaveShown || t.song != g_npShown.song || t.artist != g_npShown.artist;
+    if (c & (nbt::nowplaying::kText | nbt::nowplaying::kState)) npTexts(app, t, songChanged);
+    if (c & nbt::nowplaying::kProgress || c & nbt::nowplaying::kState) npProgress(app, t);
+    nbt::nowplaying::Track shown = t;
+    if (c & nbt::nowplaying::kArt) {
+        if (!npArt(app, t)) {                            // retry: keep the old art in "shown"
+            shown.artSeq = g_npShown.artSeq;
+            shown.artBytes = g_npShown.artBytes;
+            if (!g_npHaveShown) shown.artSeq = shown.artBytes = (unsigned)-1;
+        }
+    }
+    g_npShown = shown;
+    g_npHaveShown = true;
+}
+
+void npLogParcel(const char* what, const bmw::Parcel& p, char* hex, size_t hexSize) {
+    const unsigned char* d = p.getRawData();
+    const unsigned n = p.size();
+    size_t k = 0;
+    hex[0] = 0;
+    for (unsigned i = 0; d && i < n && i < 16 && k + 4 < hexSize; ++i) k += snprintf(hex + k, hexSize - k, "%02x ", d[i]);
+    alog("now playing: %s, Parcel %u bytes: %s", what, n, hex);
+}
+
+// A row of the cluster list was selected: "< Previous" / the song / "Next >" -> media prev / play / next.
+bool onIcSetTrack(void*, const bmw::Parcel& p) {
+    char hex[80];
+    npLogParcel("cluster setTrack", p, hex, sizeof(hex));
+    const int row = nbt::nowplaying::rowFromParcel(p.getRawData(), p.size());
+    const char* cmd = nbt::nowplaying::commandForRow(row);
+    if (!cmd) { alog("now playing: cluster row %d: nothing to do", row); return true; }
+    char msg[32];
+    snprintf(msg, sizeof(msg), "media %s", cmd);
+    sendToDaemon(msg);
+    alog("now playing: cluster row %d -> \"%s\" to nbt-aad", row, msg);
+    return true;
+}
+
+bool onIcAction(void*, const bmw::Parcel& p) {
+    char hex[80];
+    npLogParcel("cluster action", p, hex, sizeof(hex));
+    return true;
+}
+
+bool onNpStateAction(void*, const bmw::Parcel& p) {
+    char hex[80];
+    npLogParcel("now playing screen action (artist / cover / progress / playlist / album)", p, hex, sizeof(hex));
+    return true;
+}
+
 void statusRun(void* /*self*/) {
     bmw::PluginApp* app = g_runApp;
     if (!app) return;                                   // finalized: stop polling
@@ -1792,6 +2086,7 @@ void statusRun(void* /*self*/) {
     serviceAutostart();
     serviceBootGuardSettle();
     DaemonState d = readDaemonState();
+    serviceNowPlaying(app, d.pid != 0);
     bool connecting = !strcmp(d.state, "connecting"), connected = !strcmp(d.state, "connected");
 
     unsigned want = connecting ? kTextConnecting : kTextDefault;          // the Media/Radio entry row
@@ -1977,6 +2272,11 @@ bool appOnInit(bmw::PluginApp* self) {
     addAction(self, kActDriveMode, &onDriveModeToggle);
     addAction(self, kActKombiNav, &onKombiNavToggle);
     addAction(self, kActWarnings, &onWarningsToggle);
+    if (nowPlayingFlag()) {                              // NbtAad_Media.xml: the cluster list and the now playing screen
+        addAction(self, kActIcSetTrack, &onIcSetTrack);
+        addAction(self, kActIcAction, &onIcAction);
+        for (unsigned a = kActNpFirst; a <= kActNpLast; ++a) addAction(self, a, &onNpStateAction);
+    }
     g_initTime = time(NULL);
     {
         bmw::ActionDelegate d;
