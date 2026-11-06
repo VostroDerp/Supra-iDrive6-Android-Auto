@@ -86,6 +86,15 @@ part: `$C sh "echo '==== MARK 4x <what> ====' >>/var/opt/aa/nbt-usb27.log"`, and
       needs the `/fs/sda0` remount (the install lines at the top of `tools/hu-install/nbt-aad-usb.sh` show how).
 - [ ] Reboot with the phone plugged in. Check: picture without a replug (#91), knockd up.
 
+## If time: G3 data (read-only, ~20 min; for the "AA as a real media source" decision)
+- [ ] Pull the iDrive and media-app binaries: `$C sh 'ls -l /opt/hmi/bin/zipped/HmiMain3D /opt/mm/bin/NBTMediaMainApp'`,
+      then `$C pull` each into `id5/local/pulled/`. At the desk: does the RHMI parser know `instrumentCluster`,
+      `audioHmiState`, `EntICPlaylist`, and can a native plugin reach the AV (entertainment source) API.
+- [ ] Bluetooth audio (base14, `NBT_AUDIO_MODE=bt`) with music playing, an unfiltered capture: `test_controls -h`
+      first, then `test_controls -t 120 -r` (as for the wheel, without `-k` if that limits it to one FBlock), with
+      marks: skip on the phone, scroll the cluster list 3 down / 3 up, pick "next" on the list. Plus `sloginfo`
+      grepped for `EntIC|InstrumentCluster|av_|A4A|Multimedia`.
+
 ## 5. Wireless over Wi-Fi Direct (no reboot, ~15-20 min)
 The car runs its Wi-Fi Direct group at boot even without CarPlay, since Wi-Fi and screen-mirroring coding was switched
 on with BimmerCode (findings.md, Wi-Fi; which setting matters is not tested yet). Upstream's `NBT_ALT_WIFI=DIRECT` offers that group to the phone; it was tested
