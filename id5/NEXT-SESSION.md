@@ -173,10 +173,14 @@ Everything here is read-only except the last item.
       2. **Transport signal.** Which DSI name and version each gate reads, and whether it is a plain stored value
          (like `carPlayState`, which Tom notes is a single DSI value) that a client can assert, or tied to a
          driver's live state. For USB: what tells A4A "real AOA device", and is that name free in USB mode, where
-         the stock `devc-serusb-aoap` does not run. This is the signal to chase, since this car runs AA over USB.
-         `carPlayState` is NOT worth pursuing here: this car has no CarPlay FSC, emulating it could break
-         CarPlay-coded cars, and it needs a CarPlay car to test (Tom's). Only record whether `Connectivity` has
-         already registered that service name, as a data point for Tom (the broker refuses a duplicate name).
+         the stock `devc-serusb-aoap` does not run. This is the first signal to chase, since this car runs AA over USB.
+      - `carPlayState` stays on the table as a fallback. Our recon decides whether it is worth asking Tom (CarPlay
+        car) to help: is the `carPlayState` DSI name free on this car (dsi_probe), and in the code does `carPlayState
+        = 1` gate ONLY the 0x31d audio source, or does it also start a CarPlay session/handshake that would need the
+        FSC this car lacks? If the name is free and the value only gates the source, it is viable for us and the
+        missing piece is downstream behaviour on a CarPlay-coded car (what owns the value, what else moves when
+        CarPlay really connects, whether the source needs live session state) which only Tom's car can show. Record
+        whether `Connectivity` already holds the name either way (broker refuses a duplicate), as a data point for Tom.
       3. **Local A4A port.** Does the A4A server bind a local socket, or only accept connections from the tunnel
          endpoint (see the listeners item above)?
 - [ ] Decision tree, and any head-unit-side changes that would not go upstream (the owner wants those explored for
