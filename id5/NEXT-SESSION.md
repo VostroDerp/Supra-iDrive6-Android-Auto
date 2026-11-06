@@ -27,6 +27,7 @@ The iDrive app stays rhmiapp-22b unless step 5b goes ahead.
 - [ ] Upstream, right before leaving: new PRs, issues and replies on #110 and #91. Merged work that overlaps a step
       changes that step or the base build.
 - [ ] Battery charger packed. Laptop and phone on the home Wi-Fi (fallback unlock; adb for logcat).
+- [ ] `id5/tools/a4a/a4a_probe.sh --fetch` (the A4A probe's libraries, for step 5c).
 
 ## Getting in
 1. ENET cable in, charger on. `$C status`, then `$C knock`.
@@ -173,9 +174,11 @@ Everything here is read-only except the last item.
       Then the names from the strings, e.g. `$C sh '/var/opt/aa/dsi_probe 5 <Role>.<Interface>:<major>.<minor> ...'`,
       in USB mode with AA running and once with AA stopped.
 - [ ] The server from the laptop, only if a listener was found and the owner says go (the one item that talks to
-      A4A): `$C forward 14004 <port>`, then from the laptop connect to 127.0.0.1:14004 and see whether it
-      answers. A login attempt needs an Etch client on the laptop (IDriveConnectKit, the Kotlin library AAIdrive
-      uses). `$C unforward 14004 <port>` afterwards.
+      A4A): `$C forward 14004 <port>`, then `id5/tools/a4a/a4a_probe.sh 127.0.0.1 14004` (Etch handshake and
+      `ver_getVersion`). Then `--caps` (what it allows before a login). A port that is not Etch:
+      `a4a_probe.sh --raw 5 127.0.0.1 14004` (sends nothing, prints what arrives). `--cert <file>` (a certificate
+      the owner supplies) and `--try-av` (can add a source: a second go) only after the first answers.
+      `$C unforward 14004 <port>` afterwards. Fetch the probe's libraries at home first: `a4a_probe.sh --fetch`.
 
 ## 5d. Reference: a real A4A session (option A, ~20 min; MyBMW + AAIdrive on the phone)
 AAIdrive over Bluetooth (MyBMW holds the link) while AA runs over USB with base14. It answers whether a real A4A
