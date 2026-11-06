@@ -106,6 +106,7 @@
 #include "car/ccs_input.hpp"
 #include "car/volume_input.hpp"
 #include "car/input_activity.hpp"
+#include "media_publish.hpp"
 #include "most/client.hpp"
 #include "most/trace.hpp"
 #include "crash_handler.hpp"
@@ -153,6 +154,7 @@ static nbt::most::Client g_most;             // the one MOST observe client, sta
 static nbt::car::CcsInput g_ccs;             // iDrive controller and voice button: a consumer of g_most
 static nbt::car::VolumeInput g_carVolume;    // the car's master volume for the overlay: a consumer of g_most
 static nbt::car::InputActivity g_carInput;   // any car control the driver touched: a consumer of g_most
+static nbt::MediaPublisher g_media;          // what the phone plays, for the iDrive app (media_info.hpp, #51)
 static nbt::most::Trace g_mostTrace;         // NBT_MOST_LOG=1: logs what g_most sees
 
 // ---- Single instance + control port (NBT_CTL=0 disables, NBT_CTL_PORT overrides 52790) -------------------
@@ -404,6 +406,17 @@ static void* ctlThread(void*) {
         }
         else if (!strncmp(buf, "drivemode ", 10)) onDriveModeMsg(buf + 10);
         else if (!strncmp(buf, "dsc ", 4)) onDscMsg(buf + 4);
+        else if (!strncmp(buf, "media ", 6)) {
+            // From the iDrive app (cluster list, Now Playing): an Android media key, press and release.
+            const uint32_t k = nbt::mediaKeyFor(buf + 6);
+            if (k) {
+                printf("[Media] '%s' from the iDrive app: media key %u to the phone\n", buf + 6, k);
+                g_session.postKeyEvent(k, true);
+                g_session.postKeyEvent(k, false);
+            } else {
+                printf("[Ctl] unknown media request '%s' ignored.\n", buf + 6);
+            }
+        }
         else if (!strncmp(buf, "quit", 4)) { printf("[Ctl] [%9.3f] 'quit' received.\n", upSec()); g_running = 0; }
         else if (!strncmp(buf, "hide", 4)) { printf("[Ctl] 'hide' from the iDrive app: a hard key took iDrive elsewhere.\n"); g_hideReq = 1; }
         else printf("[Ctl] unknown request '%s' ignored.\n", buf);
@@ -1164,8 +1177,13 @@ static void onAudioState(uint8_t channel, bool started, uint32_t rate, uint32_t 
 static double g_sessionStartS = 0;   // upSec() of the last onClientConnected
 static int g_shortSessions = 0;      // sessions in a row that ended within kShortSessionS of connecting
 static const double kShortSessionS = 15.0;
+static void onMediaMessage(uint16_t msg_id, const uint8_t* body, size_t len, void*) {
+    g_media.onMessage(msg_id, body, len);
+}
+
 static void onSessionEnded(void* user_data) {
     g_sessionActive = false;
+    g_media.onSessionEnded();
     g_owner.set(nbt::kTransportNone);
     nbt::TcpServer* server = reinterpret_cast<nbt::TcpServer*>(user_data);
     double now = upSec(), dur = g_sessionStartS > 0 ? now - g_sessionStartS : -1;
@@ -1744,6 +1762,11 @@ int main(int argc, char* argv[]) {
     g_session.setVideoFocusCallback(&onVideoFocusRequest, NULL);
     g_session.setMicRequestCallback(&onMicRequest, NULL);
     g_session.setNavStatusCallback(&nbt::kombinav::KombiNav::navStatusCallback, &g_kombiNav);
+    // Now playing for the iDrive app (NBT_MEDIA_INFO, default on; NBT_MEDIA_DUMP=N keeps the first N album arts in
+    // /var/opt/aa to see what the phone sends).
+    g_media.configure(nbt::envFlag("NBT_MEDIA_INFO") != 0, NULL, NULL, "/var/opt/aa",
+                      (unsigned)nbt::envRange("NBT_MEDIA_DUMP", 0, 0, 20));
+    g_session.setMediaMessageCallback(&onMediaMessage, NULL);
 
     if (!tcp_server.start()) {
         printf("[Main] Fatal: Failed to start TCP server on port %u\n", (unsigned)g_aaPort);

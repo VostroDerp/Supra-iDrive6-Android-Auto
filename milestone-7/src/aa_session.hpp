@@ -31,6 +31,9 @@ typedef void (*MicRequestCallback)(bool open, void* user_data);
 // Navigation status channel (ch 10, messages 0x8000 and up): the message id and its protobuf body (after the 2-byte
 // message id). Session thread: copy what you need and return, never block.
 typedef void (*NavStatusCallback)(uint16_t msg_id, const uint8_t* body, size_t len, void* user_data);
+// Media playback channel (ch 12, messages 0x8001 status / 0x8003 metadata + album art): the message id and its
+// protobuf body. Session thread: copy what you need and return.
+typedef void (*MediaMessageCallback)(uint16_t msg_id, const uint8_t* body, size_t len, void* user_data);
 
 class AASession {
 public:
@@ -47,6 +50,7 @@ public:
     void setVideoFocusCallback(VideoFocusCallback cb, void* user_data = NULL);
     void setMicRequestCallback(MicRequestCallback cb, void* user_data = NULL);
     void setNavStatusCallback(NavStatusCallback cb, void* user_data = NULL);
+    void setMediaMessageCallback(MediaMessageCallback cb, void* user_data = NULL);
     bool isActive() const { return isRunning(); }   // true from start() until the session ended or stop()
     // Touch forwarding (default on, NBT_TOUCH_FWD=0 disables): thread-safe, called from the touch thread.
     // Events are queued and sent by the session thread.
@@ -121,6 +125,8 @@ private:
     void* mic_user_data_;
     NavStatusCallback nav_cb_;
     void* nav_user_data_;
+    MediaMessageCallback media_cb_;
+    void* media_user_data_;
     bool mic_open_;                                // guarded by touch_mutex_
     std::vector<std::vector<uint8_t> > mic_queue_; // guarded by touch_mutex_
     uint32_t mic_sent_;                            // session thread

@@ -62,6 +62,8 @@ AASession::AASession()
     mic_user_data_ = NULL;
     nav_cb_ = NULL;
     nav_user_data_ = NULL;
+    media_cb_ = NULL;
+    media_user_data_ = NULL;
     mic_open_ = false;
     mic_sent_ = 0;
     audio_frames_[0] = audio_frames_[1] = audio_frames_[2] = 0;
@@ -145,6 +147,11 @@ void AASession::postNightMode(bool night) {
 void AASession::setMicRequestCallback(MicRequestCallback cb, void* user_data) {
     mic_cb_ = cb;
     mic_user_data_ = user_data;
+}
+
+void AASession::setMediaMessageCallback(MediaMessageCallback cb, void* user_data) {
+    media_cb_ = cb;
+    media_user_data_ = user_data;
 }
 
 void AASession::setNavStatusCallback(NavStatusCallback cb, void* user_data) {
@@ -1116,8 +1123,12 @@ void AASession::sessionLoop() {
                             frame_data.size() > 2 ? frame_data.size() - 2 : 0, nav_user_data_);
             } else if (channel == 12 && msg_id >= 0x8000) {
                 // Media playback status channel: 0x8001 = {state, source name e.g. "Apple Music", position} every
-                // second, 0x8003 = track metadata + album art. Informational only. Before v1.6.6 the generic AV
-                // handler below logged every 0x8001 as "AV START_INDICATION on Channel 12". Log state changes only.
+                // second, 0x8003 = track metadata + album art, handed to the media callback (media_publish.hpp: now
+                // playing for the iDrive app). Before v1.6.6 the generic AV handler below logged every 0x8001 as
+                // "AV START_INDICATION on Channel 12". Log state changes only.
+                if (media_cb_)
+                    media_cb_(msg_id, frame_data.size() > 2 ? &frame_data[2] : NULL,
+                              frame_data.size() > 2 ? frame_data.size() - 2 : 0, media_user_data_);
                 static uint32_t last_state = 0xFFFFFFFFu;
                 if (msg_id == 0x8001) {
                     uint32_t st = pbFirstVarint(frame_data, 2, 1);

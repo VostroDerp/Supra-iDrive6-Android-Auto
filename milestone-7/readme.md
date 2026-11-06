@@ -608,6 +608,7 @@ Leave these unset unless you are testing.
 | `NBT_TOUCH_SX/SY/OX/OY`, `NBT_TOUCH_W/H`, `NBT_TOUCH_IDLE_MS`, `NBT_TOUCH_CFG_H`, `NBT_TOUCH_PORT` | Touch scale/offset, clamp (1280x720), stuck-finger release (400 ms), declared height (720), UDP port (30567) |
 | `NBT_TOUCH_PROBE=1`, `NBT_TOUCH_PROBE_SECS` | Log raw touch frames only |
 | `NBT_KNOB_RAW=1` | Log every raw controller message |
+| `NBT_MEDIA_INFO`, `NBT_MEDIA_DUMP` | Now playing for the iDrive app: publish the phone's song, artist, album and album art in `/dev/shmem/nbt-aad-media` / `nbt-aad-art` (default on, `0` = off); keep the first N album arts as `/var/opt/aa/aa-art-<n>.png/.jpg` to see what the phone sends (default `0`, max 20). Not car-verified |
 | `NBT_MOST_LOG=1` | Log what the MOST client sees, tagged `[MOSTLOG]`: the registry, then for each message type the first 3 and then payload changes, at most 200 lines per type. For working out the car's signals from a drive. With `NBT_KNOB=0` too, the client still starts, for the log alone. The old `NBT_CCS_DEBUG=1` / `NBT_CCS_ALL=1` switch this on |
 | `NBT_GEAR_REVERSE` | Gear value for R (default 2; car codes 3 P, 1 N, 2 R, 5 D) |
 | `NBT_NEUTRAL_RESUME_S`, `NBT_GEAR_NEUTRAL` | Manual gearbox: seconds in neutral straight after reverse before Android Auto comes back over the park-assist view (default `5`; `0` = off). Leaving neutral or going back into reverse cancels it; not after you exited Android Auto. Gear value for N (default 1). Log: `[Gear] ... reverse -> neutral`. Not car-verified |
@@ -991,6 +992,13 @@ How it fits together:
   It is only accepted while our screen is on top.
 - **Reverse.** The app subscribes to the car data property `driving.gear` and sends `gear <n>` to the daemon.
   Gear == `NBT_GEAR_REVERSE` hides the overlay for the camera.
+- **Now playing (#51, groundwork, not car-verified).** The daemon publishes what the phone plays (media playback
+  channel 12: status, song, artist, album, album art) as a small text record in `/dev/shmem/nbt-aad-media`, written
+  in place, with the album art bytes in `/dev/shmem/nbt-aad-art` (format: `src/media_info.hpp`). The app's
+  `media next|prev|playpause|play|pause` on the control port becomes the Android media key to the phone (87 / 88 /
+  85 / 126 / 127, already in the input channel's key list). Log: `[Media] track: ...`, `[Media] album art N: png
+  WxH, B bytes`, `[Media] 'next' from the iDrive app: media key 87 to the phone`. The iDrive app does not read the
+  record yet.
 - **Exit icon.** The phone's exit icon sends a VideoFocusRequest. The daemon answers it, hides the overlay and stops
   forwarding input. The menu entry brings the overlay back (FOCUSED is sent to the phone).
 
@@ -1055,6 +1063,7 @@ listed in `tests/Makefile`; binaries and logs go to `tests/build/`.
 | `test_audio_config` | The audio settings: defaults, ranges and parsing of each browser / Bluetooth setting, `NBT_AUDIO_MODE` / `NBT_AUDIO_BT` precedence |
 | `test_audio_channels` | The AA audio channel table: 8 / 9 / 16 <-> stream, other channels rejected, names, log order |
 | `test_media_ack` | Deferred audio acks: acked once consumed, forced acks and skipped bytes, window-full count, a phone held to its window |
+| `test_media_info` | Now playing for the iDrive app: the `/dev/shmem/nbt-aad-media` record, text cleaning, album art type and size (PNG / JPEG), the media keys, the publisher with temp files |
 | `test_media_msgs` | AA media-channel messages byte for byte against Google's receiver library (media ack with arrival times, AudioUnderflowNotification) |
 | `test_audio_format` | Offered AudioConfigs read back from the SDR, the phone's choice in AV START_INDICATION, guidance offered at one rate in browser mode |
 | `test_route_policy` | Browser source build / release: grant timeout and 60 s backoff, release after `NBT_BROWSER_IDLE_S` with media and `NBT_BROWSER_PROMPT_IDLE_MS` without, no build while releasing, release timeout |

@@ -41,7 +41,8 @@ struct AaMediaMetadata {
     std::string playlist;
     unsigned duration;          // duration_seconds
     size_t albumArtBytes;       // field 4 is the image itself; only its length is kept here
-    AaMediaMetadata() : duration(0), albumArtBytes(0) {}
+    const uint8_t* albumArt;    // ... and where it starts in the parsed body (valid only while that buffer is)
+    AaMediaMetadata() : duration(0), albumArtBytes(0), albumArt(NULL) {}
 };
 
 // One protobuf field of a message body.
@@ -141,7 +142,7 @@ inline bool aaParseMediaStatus(const uint8_t* p, size_t n, AaMediaStatus& out) {
     return any;
 }
 
-// 0x8003 MediaPlaybackMetadata. Album art is only measured, never copied.
+// 0x8003 MediaPlaybackMetadata. Album art is never copied: albumArt points into the body.
 inline bool aaParseMediaMetadata(const uint8_t* p, size_t n, AaMediaMetadata& out) {
     if (!p) return false;
     bool any = false;
@@ -159,7 +160,7 @@ inline bool aaParseMediaMetadata(const uint8_t* p, size_t n, AaMediaMetadata& ou
                 if (f.wire == 2) { out.album = pbAsString(f); any = true; }
                 break;
             case 4:
-                if (f.wire == 2) { out.albumArtBytes = f.len; any = true; }
+                if (f.wire == 2) { out.albumArtBytes = f.len; out.albumArt = f.data; any = true; }
                 break;
             case 5:
                 if (f.wire == 2) { out.playlist = pbAsString(f); any = true; }
