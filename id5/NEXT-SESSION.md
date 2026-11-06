@@ -18,8 +18,10 @@ doesn't depend on it. Note the clock at the start of each step. Results go into 
 | `nbt-aad-base` (there now) | v1.9.09-most-base13-pr91 | upstream main e279e55 + Tom's #91 | daily build since run 25; black screen seen once on a drive |
 | `nbt-aad-base13-pr91` (there) | the same | the way back | |
 | `nbt-aad-base14` (push `$U/nbt-aad-base14`, md5 bf0b789d) | v1.9.19-safety-base14 | upstream main a9fac36 + #91 (0b38f62) + `browser-hold` (a55c82f, off unless `NBT_BROWSER_HOLD=1`) + `aa-media` (f2d93df: now playing published in `/dev/shmem/nbt-aad-media`, `[Media]` log lines; `NBT_MEDIA_INFO=0` = off) | host tests pass, QNX build, not car-tested |
+| iDrive app (there now) | rhmiapp-22b | | works with v1.9.19 |
+| iDrive app, step 5b (`$U/rhmiapp-38-np/`, `libNbtAad.so` md5 6e2f3844) | rhmiapp-38-nowplaying | upstream rhmiapp-37 + `aa-media` 7ca97a1: `NbtAad_Media.xml` (Now playing screen, cluster list, iDrive now playing line), off unless `/var/opt/aa/now-playing` exists | host tests pass, QNX build, not car-tested |
 
-The iDrive app stays rhmiapp-22b this session (it works with v1.9.19; updating it is its own step, "Later").
+The iDrive app stays rhmiapp-22b unless step 5b goes ahead.
 
 ## Before going to the car
 - [ ] Upstream, right before leaving: new PRs, issues and replies on #110 and #91. Merged work that overlaps a step
@@ -98,10 +100,12 @@ phone's side (`[Media]` lines, album art files: format, size).
       Music playing: OPTION = next track, COM = previous track (MARK before each, 3 presses ~3 s apart). Prediction:
       the track changes each time; `[AASession] key -> phone: key=87 down/up (sent)`.
 - [ ] **Where iDrive's screens live** (read-only):
-      `$C sh 'ls -l /opt/hmi/bin /opt/hmi/bin/zipped /opt/mm/bin/NBTMediaMainApp; ls /opt/hmi/ID5/data/ro/Plugins; ls /opt/hmi/lib /opt/mm/lib 2>/dev/null | grep -i -E "a4a|rhmi|hmi|av"'`,
-      then `$C pull` into `id5/local/pulled/hmi/`: HmiMain3D, NBTMediaMainApp and the `*a4a*` libraries. At the desk:
-      the XML parser's tags (`instrumentCluster`, `audioHmiState`, `multimediaInfoEvent`, `EntICPlaylist`) and how an
-      app becomes the entertainment source.
+      `$C sh 'ls -l /opt/hmi/bin /opt/hmi/bin/zipped /opt/mm/bin/NBTMediaMainApp; ls /opt/hmi/ID5/data/ro/Plugins; ls /opt/hmi/lib /opt/mm/lib 2>/dev/null | grep -i -E "a4a|rhmi|hmi|av|etch|connector|plugin"'`,
+      then `$C pull` into `id5/local/pulled/hmi/`: HmiMain3D, NBTMediaMainApp, the `*a4a*` libraries and the plugin
+      connector (manifest: `pluginAppConnector` Etch, id 210; whatever library holds it). Right away at the laptop
+      (5b f needs it): the `bmw::Variant` type codes for int and bool, next to the known 0x22 text / 0x28 TextID /
+      0x2b ImageID. At the desk: the XML parser's tags (`instrumentCluster`, `audioHmiState`, `multimediaInfoEvent`,
+      `EntICPlaylist`) and how an app becomes the entertainment source.
 - [ ] **Any stock screen that already uses those tags**:
       `$C sh 'for f in $(find /opt/hmi /var/opt/hmi -name "*.xml" 2>/dev/null); do grep -l -i -E "instrumentCluster|audioHmiState|EntICPlaylist" "$f"; done'`;
       pull what it lists.
@@ -115,6 +119,35 @@ phone's side (`[Media]` lines, album art files: format, size).
 - [ ] **If AAIdrive and MyBMW are still on the phone** (optional, last): AAIdrive over Bluetooth while AA runs over
       USB. Note what iDrive and the cluster show, and `sloginfo` (same grep). A reference trace of a working RHMI
       media source on this car.
+
+## 5b. The iDrive app with now playing (one reboot, ~30 min; after 3 and 5; needs a go on the day)
+The car's app goes from rhmiapp-22b to rhmiapp-38-nowplaying with `NbtAad_Media.xml`. That also brings every upstream
+app change since 22b, so check a is the plain menu working as before. The daemon is base14 (it publishes the record
+and takes `media next|prev|play`). If iDrive misbehaves, SSH still works (sshd doesn't depend on the HMI).
+- [ ] Where the app lives, read-only: `$C sh 'ls -l /opt/hmi/ID5/data/ro/Plugins/NbtAad /var/opt/hmi/data/ID5/Plugins 2>&1; df /opt/hmi/ID5/data/ro/Plugins/NbtAad'`.
+      If it is not on `/fs/sda0`, stop and work out the install line at the laptop.
+- [ ] Backup: `$C sh 'mkdir -p /var/opt/aa/app-22b && cp /opt/hmi/ID5/data/ro/Plugins/NbtAad/* /var/opt/aa/app-22b/ && ls -l /var/opt/aa/app-22b'`.
+- [ ] Push: `$C sh 'mkdir -p /var/opt/aa/app-38'`, then `for f in $U/rhmiapp-38-np/*; do $C push $f /var/opt/aa/app-38/$(basename $f); done`,
+      md5 of `libNbtAad.so` = 6e2f3844. `$C sh 'echo 1 > /var/opt/aa/now-playing'`.
+      (`NbtAad.manifest` points at `NbtAad_Media.xml`. `NbtAad.manifest.plain` is the same app with the plain menu.)
+- [ ] Install: `$C sh 'mount -uw /fs/sda0 && cp /var/opt/aa/app-38/* /opt/hmi/ID5/data/ro/Plugins/NbtAad/; mount -ur /fs/sda0'`.
+      Reboot with the phone plugged in, base14 as the daemon, music playing.
+- [ ] Checks, in order, stop at the first that fails (photos of every screen):
+  - a. The Android Auto entry and our menu as before, Android Auto starts. Entry missing = iDrive rejected
+       `NbtAad_Media.xml`: `cp NbtAad.manifest.plain` over `NbtAad.manifest` (remount), reboot, and save
+       `sloginfo | grep -i -E "NbtAad|xml|pars"`. That alone answers "a native app can't declare these".
+  - b. App log (`sloginfo | grep "now playing"`, or the USB app log): `now playing: on`, then
+       `now playing: "<song>" - "<artist>" (<app>, playing)` and `album art N -> cover`.
+  - c. Our menu, Now playing: what shows (title, artist, album, cover, progress, times). Skip a track on the phone.
+  - d. iDrive home screen and the Media side panel: does the song show (`multimediaInfoEvent`)?
+  - e. The cluster: anything at all, before the list is on.
+  - f. The cluster list: with the int / bool codes from step 5,
+       `$C sh 'rm /var/opt/aa/now-playing; sleep 2; printf "int-type N\nbool-type M\n" > /var/opt/aa/now-playing'`
+       (the app reads the options when the flag comes back). Log: `cluster list model 221 <- 3 rows`. Does the list
+       show? Scroll to "Next >" and pick it: app log `cluster setTrack, Parcel ...`, daemon log
+       `[Media] 'next' from the iDrive app`, the track changes. Same for "< Previous".
+- [ ] Way back: copy `/var/opt/aa/app-22b/*` back (remount) and reboot. If a and b passed and only the media screens
+      misbehave, the plain manifest keeps rhmiapp-38 with the old menu: decide on the day.
 
 ## 6. Wireless over Wi-Fi Direct (no reboot, ~15-20 min)
 The car runs its Wi-Fi Direct group at boot even without CarPlay, since Wi-Fi and screen-mirroring coding was switched
