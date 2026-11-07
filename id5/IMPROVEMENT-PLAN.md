@@ -37,6 +37,13 @@ Car test: NEXT-SESSION steps 4 and 5.
   network too. Only once wireless works.
 - **F8. Idle-shell timeout.** Left out on purpose (it would cut long `car.sh` runs); keep-alives already drop dead
   sessions.
+- **F9. Finish the unlock capture** (needs a factory-unlock / diag session, read-only). The sessions in
+  `local/unlock/` only stored the challenge and our outbound FD2E/FD2F/FDAC frames, never the car's positive
+  responses. Next unlock, save them: the FD2F accept (`71 01 FD2F ...`) and FDAC status (`71 01 FDAC <status>`),
+  by running `tools/legacy/nbt-ssh-unlock.py` with its console log kept, or a pcap on the ENET leg. Also pull the
+  version strings we have no record of (the recon `head` pipe dropped them): iStep from `/fs/sda0/repository/istep`
+  and the bootloader banner `/etc/bootloader_banner.txt`, for BTLD/SWFL. Feeds the Path-B verifier question (does
+  FD2F verify against the same Root/SigS/FscS chain as FSC) which needs `NbtDiagHuHighApp` pulled from `/opt/sys/bin`.
 
 ## G. Fixes from the 2026-11-05 car session (runs 16-25 in NEXT-SESSION)
 - **G1. Browser audio holds the source like a real media source** (first PR candidate). Today the daemon gives the
