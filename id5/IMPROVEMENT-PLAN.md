@@ -43,7 +43,14 @@ Car test: NEXT-SESSION steps 4 and 5.
   by running `tools/legacy/nbt-ssh-unlock.py` with its console log kept, or a pcap on the ENET leg. Also pull the
   version strings we have no record of (the recon `head` pipe dropped them): iStep from `/fs/sda0/repository/istep`
   and the bootloader banner `/etc/bootloader_banner.txt`, for BTLD/SWFL. Feeds the Path-B verifier question (does
-  FD2F verify against the same Root/SigS/FscS chain as FSC) which needs `NbtDiagHuHighApp` pulled from `/opt/sys/bin`.
+  FD2F verify against the same Root/SigS/FscS chain as FSC). The 0x63 the unlock targets is the **jacinto** node
+  (`HUJacintoStage1` binds `--diag=DIAGADR63`, diag high app `NbtEvoJacintoDiagHUHighApp`); the earlier pull got the
+  **omap** variant and `/opt/sys/bin/NbtDiagHuHighApp` came back 0 bytes, so pull the jacinto diag binary and
+  whatever implements the FD2E/FD2F/FDAC routines. Note the WS `0x01` metadata is client->server only and never
+  reaches the car, so it cannot be part of what the car verifies (the car sees only FD2E/FD2F/FDAC). Definitive
+  answer: get the matching BMW SDP flash image for this HU's SWFL (e.g. the `swfl_0000271a...` container), locate the
+  routine handler offline and read the real verification modulus + algorithm. SDP/firmware stays in `local/`, never
+  the repo.
 
 ## G. Fixes from the 2026-11-05 car session (runs 16-25 in NEXT-SESSION)
 - **G1. Browser audio holds the source like a real media source** (first PR candidate). Today the daemon gives the
