@@ -48,9 +48,37 @@ Car test: NEXT-SESSION steps 4 and 5.
   **omap** variant and `/opt/sys/bin/NbtDiagHuHighApp` came back 0 bytes, so pull the jacinto diag binary and
   whatever implements the FD2E/FD2F/FDAC routines. Note the WS `0x01` metadata is client->server only and never
   reaches the car, so it cannot be part of what the car verifies (the car sees only FD2E/FD2F/FDAC). Definitive
-  answer: get the matching BMW SDP flash image for this HU's SWFL (e.g. the `swfl_0000271a...` container), locate the
-  routine handler offline and read the real verification modulus + algorithm. SDP/firmware stays in `local/`, never
-  the repo.
+  answer: the verifier binary and its embedded modulus are on the live HU, so pull them and read the modulus +
+  algorithm straight out (no external SDP needed for that). The BMW SDP flash container (`swfl_0000271a...`) is
+  BMW's distribution package, not on the car, so it would be sourced externally and only as a cleaner
+  cross-reference. SDP/firmware stays in `local/`, never the repo.
+
+  **Recon block for the next car session (collects everything the other agent asked for).** Run `ls` first where a
+  path or filename is a guess; the HU ksh has no `head`/`env`/`nc`/`strings`, so pull binaries and run `strings` on
+  the laptop. `C=id5/tools/car/car.sh`.
+  ```
+  # 1. Versions (read-only, via knockd; no unlock needed).
+  $C sh 'cat /etc/bootloader_banner.txt; echo ===; ls -l /fs/sda0/repository; ls -l /fs/sda0/repository/istep'
+  $C sh 'ls /etc | grep -i vers; cat /etc/*version* 2>/dev/null'
+  # pull the istep/version files that look textual, then `strings` them on the laptop for SWFL/BTLD/I-Step.
+
+  # 2. Pull the verifier + cert-chain binaries. 0x63 is the jacinto node, reachable from the omap shell via /net.
+  $C sh 'ls -l /bin/NbtEvoJacintoDiagHUHighApp /bin/HUJacintoStage1 /opt/car/bin /opt/sys/bin'
+  $C sh 'ls -l /net/hu-jacinto/bin/*DiagHUHighApp /net/hu-jacinto/opt/car/bin 2>/dev/null'
+  $C pull /bin/NbtEvoJacintoDiagHUHighApp        # or the /net/hu-jacinto/... path if it is jacinto-only
+  $C pull /bin/HUJacintoStage1
+  $C pull /opt/car/bin/NBTCarHUTwo                # Root/SigS/FscS chain per the Path-B research
+  # (re-pull /opt/sys/bin/NbtDiagHuHighApp too - last time it came back 0 bytes.)
+
+  # 3. Raw car responses to FD2E/FD2F/FDAC + the WS 0x01 metadata. Needs a real unlock (bavarian server + laptop
+  #    internet). Capture both directions so nothing is lost:
+  #    term A - relay with a full log:
+  tools/legacy/mitm_relay.py | tee id5/local/unlock/mitm-$(date +%Y%m%d-%H%M).log
+  #    term B - pcap on the ENET leg to the HU and the WSS (tcpdump/wireshark -> .pcapng in id5/local/unlock/)
+  #    term C - our client through the relay, console teed (it logs each car response):
+  tools/legacy/nbt-ssh-unlock.py <car-ip> --server ws://127.0.0.1:8443 --insecure 2>&1 \
+      | tee id5/local/unlock/unlock-full-$(date +%Y%m%d-%H%M).log
+  ```
 
 ## G. Fixes from the 2026-11-05 car session (runs 16-25 in NEXT-SESSION)
 - **G1. Browser audio holds the source like a real media source** (first PR candidate). Today the daemon gives the
