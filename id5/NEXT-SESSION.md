@@ -28,6 +28,9 @@ The iDrive app stays rhmiapp-22b unless step 5b goes ahead.
       changes that step or the base build.
 - [ ] Battery charger packed. Laptop and phone on the home Wi-Fi (fallback unlock; adb for logcat).
 - [ ] `id5/tools/a4a/a4a_probe.sh --fetch` (the A4A probe's libraries, for step 5c).
+- [ ] For F9 (if folding in the unlock capture, IMPROVEMENT-PLAN has the recon block): laptop with **internet at the
+      car** for the bavarian unlock, the ENET lead, and `tcpdump`/Wireshark ready to save a `.pcapng`. The
+      binary-pull and version reads in F9 need only the usual knockd SSH, not the unlock.
 
 ## Getting in
 1. ENET cable in, charger on. `$C status`, then `$C knock`.

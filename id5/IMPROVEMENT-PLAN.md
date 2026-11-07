@@ -57,10 +57,15 @@ Car test: NEXT-SESSION steps 4 and 5.
   path or filename is a guess; the HU ksh has no `head`/`env`/`nc`/`strings`, so pull binaries and run `strings` on
   the laptop. `C=id5/tools/car/car.sh`.
   ```
-  # 1. Versions (read-only, via knockd; no unlock needed).
+  # 1. Versions (read-only, via knockd; no unlock needed). The flash units are often named on disk by their exact
+  #    part number (btld_00001ffd..., swfl_0000271a...) - that listing IS the SVK/BTLD/SWFL in canonical form.
   $C sh 'cat /etc/bootloader_banner.txt; echo ===; ls -l /fs/sda0/repository; ls -l /fs/sda0/repository/istep'
+  $C sh 'ls /fs/sda0/repository/istep/* 2>/dev/null | grep -iE "btld|swfl|swfk|flsl|aif|hwel|swld"'
   $C sh 'ls /etc | grep -i vers; cat /etc/*version* 2>/dev/null'
-  # pull the istep/version files that look textual, then `strings` them on the laptop for SWFL/BTLD/I-Step.
+  # pull any textual version/manifest files, then `strings` them on the laptop.
+  # If the on-disk names do NOT give a clean SVK, read it over UDS during the unlock session (ReadDataByIdentifier,
+  # read-only): DID 0xF101 (SVK_lesen on NBT) to 0x63 over HSFZ - needs a small 0x22 read (the unlock client's
+  # allowlist blocks 0x22, so send it with a separate read-only query, not nbt-ssh-unlock.py).
 
   # 2. Pull the verifier + cert-chain binaries. 0x63 is the jacinto node, reachable from the omap shell via /net.
   $C sh 'ls -l /bin/NbtEvoJacintoDiagHUHighApp /bin/HUJacintoStage1 /opt/car/bin /opt/sys/bin'
