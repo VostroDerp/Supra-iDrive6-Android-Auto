@@ -40,6 +40,20 @@ The iDrive app stays rhmiapp-22b unless step 5b goes ahead.
 3. If the knock port is closed: `$C fallback status`, `$C fallback unlock`, start knockd through it
    (`$C fallback sh '/var/opt/aa/knockd /var/opt/aa/knock.conf >>/var/opt/aa/knock.log 2>&1 </dev/null'`), `$C knock`.
 
+## Order this session
+Front-loaded so the data the other agent needs is captured first, in case the session is cut short. The IMPROVEMENT-PLAN **F9** block has the exact commands for the recon items below.
+- **Phase 1 - capture everything for the other agent + the black-screen logs (do first).** Step 1 (black-screen
+  logs); F9 version read (`svk_read.py` -> exact BTLD/SWFL to pick the PSdZData container); F9 binary pulls
+  (`NbtEvoJacintoDiagHUHighApp`, `HUJacintoStage1`, `NBTCarHUTwo`, re-pull the empty `NbtDiagHuHighApp`); step 5's
+  HmiMain3D/NBTMediaMainApp pull; and the F9 unlock transcript (bavarian unlock through `mitm_relay.py` + a pcap +
+  the teed client, for the FD2E/FD2F/FDAC responses + the WS `0x01`). All read-only except the unlock, which needs
+  internet at the car. The version read and binary pulls need only knockd SSH / ENET - no unlock.
+- **Phase 2 - base + settings (no reboot):** step 2 (only if step 1 shows the DNS gap), step 3 (base14), step 4 (pause fix).
+- **Phase 3 - now playing (your go, one reboot):** step 5b.
+- **Phase 4 - A4A / cluster recon (no reboot):** step 5c, then step 5d.
+- **Phase 5 - optional if time (reboots):** step 6 (Wi-Fi Direct), step 7 (knockd v2), step 8 (NbtService).
+- If time is short, the cut line is after Phase 1 (the other agent's data is safe) or after Phase 4 (the media/cluster task). Every car-touching action still waits for a go on the day.
+
 ## 1. Read-only first (~5 min)
 - [ ] **The drive's black screen, before anything writes the logs:** `$C pull /var/opt/aa/nbt.log
       id5/local/recon/drive-2026-11-06/nbt.log`, the same for `nbt.log.1` (if there) and `/var/opt/aa/mmr.log`, and
