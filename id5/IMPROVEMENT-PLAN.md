@@ -78,14 +78,20 @@ Car test: NEXT-SESSION steps 4 and 5.
   $C pull /opt/car/bin/NBTCarHUTwo                # Root/SigS/FscS chain per the Path-B research
   # (re-pull /opt/sys/bin/NbtDiagHuHighApp too - last time it came back 0 bytes.)
 
-  # 3. Raw car responses to FD2E/FD2F/FDAC + the WS 0x01 metadata. Needs a real unlock (bavarian server + laptop
-  #    internet). Capture both directions so nothing is lost:
-  #    term A - relay with a full log:
-  tools/legacy/mitm_relay.py | tee id5/local/unlock/mitm-$(date +%Y%m%d-%H%M).log
-  #    term B - pcap on the ENET leg to the HU and the WSS (tcpdump/wireshark -> .pcapng in id5/local/unlock/)
-  #    term C - our client through the relay, console teed (it logs each car response):
-  tools/legacy/nbt-ssh-unlock.py <car-ip> --server ws://127.0.0.1:8443 --insecure 2>&1 \
-      | tee id5/local/unlock/unlock-full-$(date +%Y%m%d-%H%M).log
+  # 3. The unlock itself. Needs a real unlock (bavarian server + laptop internet). One command does the lot
+  #    (pcap of the plaintext HSFZ leg + session JSON with the car's responses + full teed log); sudo prompts
+  #    once for the pcap. Everything lands in id5/local/unlock/. See the tool's header for args.
+  id5/tools/legacy/capture-unlock.sh                 # car=169.254.199.99 (jacinto), prod relay
+  #    The JSON now carries session["responses"] (FD2F accept 71 01 FD2F..., FDAC status 71 01 FDAC <s>) and
+  #    session["car_frames"]; the log has BOTH WSS directions. The WS 0x01 is our zero stub (12 zero bytes), it
+  #    never reaches the car, so there is nothing to capture there - do not go hunting for it.
+  #
+  # 3b. Immediately after the unlock (before any reboot), grab the car's own diagnostic log of the verify event -
+  #     this is unique to the live unlock and gone after reboot. Run ls first; the HU ksh has no head/strings.
+  $C sh 'ls -l /var/log 2>/dev/null; ls /dev/slog2 2>/dev/null; which slog2info 2>/dev/null'
+  $C sh 'slog2info -b 2>/dev/null | tail -400'               # if slog2info exists, dump the recent ring
+  $C sh 'ls -lt /var/log/*.log /var/log/*/* 2>/dev/null | head' # else find textual logs to pull
+  # pull whatever diag/verify log the jacinto node wrote (path from the ls above), then strings it on the laptop.
   ```
 
 ## G. Fixes from the 2026-11-05 car session (runs 16-25 in NEXT-SESSION)

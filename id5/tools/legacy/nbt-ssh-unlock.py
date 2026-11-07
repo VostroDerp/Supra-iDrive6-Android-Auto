@@ -347,8 +347,10 @@ def main():
     ws = WS(a.server, insecure=a.insecure)
     # type 0x01 is a fixed 12-byte body, NO length prefix (targets: vin/mac/diag
     # — zero when the car IP was entered manually, matching upstream behaviour)
-    for m in (msg(0x06, CLIENT_VERSION), bytes([0x01]) + b"\x00" * 12,
-              msg(0x02, JOB)):
+    for tag, m in (("0x06 version", msg(0x06, CLIENT_VERSION)),
+                   ("0x01 meta-stub", bytes([0x01]) + b"\x00" * 12),
+                   ("0x02 job", msg(0x02, JOB))):
+        log("client->server", f"{tag}: {m.hex()}")
         ws.send(m)
     log("relay", "hello sent (version, targets, job=ssh_enable)")
 
@@ -427,7 +429,9 @@ def main():
                     ch = extract_challenge(f)
                     if ch:
                         session["challenge"] = ch.hex()
-                    ws.send(msg(0x03, f))
+                    out = msg(0x03, f)
+                    log("client->server", f"0x03 car-frame: {out.hex()}")
+                    ws.send(out)
             else:
                 # drain ALL buffered relay messages — the server bursts several
                 # per TLS record; select won't refire for data already in ws.buf
