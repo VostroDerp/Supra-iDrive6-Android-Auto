@@ -10,6 +10,7 @@ Laptop-side tools for the BMW NBT Evo ID5 work. None of this is upstream materia
 | `hu-install/` | What is installed on the HU: the USB start-up script `nbt-aad-usb.sh` (becomes `/opt/aa/nbt-aad`), env, sshd_config, knock.conf, plugin XML | Reference + redeploy |
 | `a4a/` | `a4a_probe.sh`: does a port speak A4A (Etch, the protocol MyBMW and AAIdrive use), and what does it allow before a login. Laptop side, through `car.sh forward`. Host test `test/test_a4a_probe.sh` (a mock A4A server) | Step 5c |
 | `recon/` | Read-only HU state dumps (`recon-full.sh`, `recon-knock.sh` via car.sh; `*-recon.sh`, `probe-ap.sh` run on the HU) | As needed |
+| `recon/svk_read.py` | Read the HU SVK over HSFZ (read-only, ENET only): exact BTLD/SWFL versions to match PSdZData. Host test `test_svk_read.py` | F9 |
 | `desk-rig/` | Linux test rig: our AA session code against a real phone over USB, at the desk | Before car tests |
 | `git-hooks/` | pre-push guard (paths, sizes, identifiers, clean `main`) + `install.sh` | Once per clone |
 | `legacy/` | Retired paths: the bavarian unlock client + its vetting write-up, `hu.sh` (BM3/:22 password path), `nbt-aad-bm3.sh` (the Wi-Fi dongle wrapper), `wifi/` (the car's own hotspot, dropped for Wi-Fi Direct), MITM/relay and gdb/pdebug experiments | Fallback / history only |

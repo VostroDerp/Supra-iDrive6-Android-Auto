@@ -63,9 +63,12 @@ Car test: NEXT-SESSION steps 4 and 5.
   $C sh 'ls /fs/sda0/repository/istep/* 2>/dev/null | grep -iE "btld|swfl|swfk|flsl|aif|hwel|swld"'
   $C sh 'ls /etc | grep -i vers; cat /etc/*version* 2>/dev/null'
   # pull any textual version/manifest files, then `strings` them on the laptop.
-  # If the on-disk names do NOT give a clean SVK, read it over UDS during the unlock session (ReadDataByIdentifier,
-  # read-only): DID 0xF101 (SVK_lesen on NBT) to 0x63 over HSFZ - needs a small 0x22 read (the unlock client's
-  # allowlist blocks 0x22, so send it with a separate read-only query, not nbt-ssh-unlock.py).
+  # Authoritative version read (to pick the matching PSdZData BTLD/SWFL container). Read-only, ENET only, NO unlock
+  # or internet needed. tools/recon/svk_read.py sends only UDS 0x22/0x3E (hardcoded allowlist) and finds the
+  # part numbers 00001FFD (BTLD) / 0000271A (SWFL) in the SVK, printing e.g. BTLD-00001FFD-007.051.002:
+  python3 id5/tools/recon/svk_read.py            # scans identification DIDs on 169.254.199.99
+  # Once the jacinto diag binary gives the real SVK DID, pass it: svk_read.py --did <hex>. --session if refused,
+  # --raw to inspect. Host-tested in tools/recon/test_svk_read.py.
 
   # 2. Pull the verifier + cert-chain binaries. 0x63 is the jacinto node, reachable from the omap shell via /net.
   $C sh 'ls -l /bin/NbtEvoJacintoDiagHUHighApp /bin/HUJacintoStage1 /opt/car/bin /opt/sys/bin'
