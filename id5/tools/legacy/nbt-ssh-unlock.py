@@ -356,7 +356,12 @@ def main():
     ws.sock.setblocking(False)
     car.setblocking(False)
     cbuf = b""
-    session = {"challenge": None, "fd2e": None, "fd2f": None, "fdac": None}
+    # Outbound request frames keyed by routine (fd2e/fd2f/fdac) plus the car's
+    # own responses: "responses" keyed by routine (the positive 71 01 <rid>
+    # replies the other agent asked for - FD2F accept, FDAC status), and
+    # "car_frames" the full chronological list so nothing is lost.
+    session = {"challenge": None, "fd2e": None, "fd2f": None, "fdac": None,
+               "responses": {}, "car_frames": []}
 
     def _hsfz_frames(buf):
         """real-HU hsfz framing: len:u32be | 00 | ctrl | src | tgt | uds.
@@ -412,6 +417,13 @@ def main():
                 frames, cbuf = _hsfz_frames(cbuf)
                 for f in frames:
                     log("car->server", f.hex())
+                    session["car_frames"].append(f.hex())
+                    # hsfz header is 8 bytes (len4|00|ctrl|src|tgt); uds follows.
+                    uds = f[8:]
+                    if len(uds) >= 4 and uds[0] == 0x71:   # positive RoutineControl reply
+                        session["responses"][rid_name.get(uds[2:4], uds[2:4].hex())] = f.hex()
+                    elif len(uds) >= 3 and uds[0] == 0x7f:  # negative reply, keep it too
+                        session["responses"].setdefault("negatives", []).append(f.hex())
                     ch = extract_challenge(f)
                     if ch:
                         session["challenge"] = ch.hex()
